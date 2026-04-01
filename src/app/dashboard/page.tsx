@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const [systemOnline, setSystemOnline] = useState(false)
   const [loading, setLoading] = useState(true)
   const [isTimedOut, setIsTimedOut] = useState(false)
+  const [settings, setSettings] = useState<any>(null)
 
   // Functional UI State
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false)
@@ -83,6 +84,11 @@ export default function DashboardPage() {
       setSystemOnline(!!snap.val())
     })
 
+    const settingsRef = ref(database, 'terra/settings')
+    onValue(settingsRef, (snap) => {
+      setSettings(snap.val())
+    })
+
     const disasterRef = ref(database, 'terra/activeDisaster')
     const unsubscribeDisaster = onValue(disasterRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -98,7 +104,27 @@ export default function DashboardPage() {
 
     const weatherRef = ref(database, 'terra/weatherData')
     const unsubscribeWeather = onValue(weatherRef, (snapshot) => {
-      if (snapshot.exists()) setWeather(snapshot.val())
+      const weatherData = snapshot.val()
+      if (weatherData) {
+        setWeather(weatherData)
+        
+        // Automated Rainfall Warning System
+        if (settings?.rainfallThreshold && weatherData.rainfall > settings.rainfallThreshold) {
+          const lastWarningTime = parseInt(localStorage.getItem('terra_last_rainfall_warning') || '0')
+          const now = Date.now()
+          
+          // Only warn once every 30 minutes
+          if (now - lastWarningTime > 30 * 60 * 1000) {
+            push(ref(database, 'terra/tacticalFeed'), {
+              message: `AUTOMATED ALERT: Rainfall exceeds tactical threshold (${weatherData.rainfall}mm/h > ${settings.rainfallThreshold}mm/h). Sector risk escalating.`,
+              priority: "WARNING",
+              source: "ai",
+              timestamp: new Date().toISOString()
+            })
+            localStorage.setItem('terra_last_rainfall_warning', now.toString())
+          }
+        }
+      }
     })
 
     const feedRef = ref(database, 'terra/tacticalFeed')
@@ -110,6 +136,15 @@ export default function DashboardPage() {
           ...val
         }))
         feedArray.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        
+        // Critical Broadcaster Support
+        const latest = feedArray[0]
+        if (latest && settings?.criticalBroadcaster && latest.priority === 'CRITICAL' && new Date(latest.timestamp).getTime() > lastReadTime) {
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("TERRA CRITICAL ALERT", { body: latest.message })
+          }
+        }
+
         setTacticalFeed(feedArray.slice(0, 10))
       }
     })
@@ -121,7 +156,7 @@ export default function DashboardPage() {
       unsubSystem()
       clearTimeout(loadTimeout)
     }
-  }, [])
+  }, [settings, lastReadTime])
 
   const getSeverityConfig = (severity: string) => {
     switch (severity?.toUpperCase()) {
@@ -155,15 +190,19 @@ export default function DashboardPage() {
 
   const handleMarkAsRead = () => {
     setLastReadTime(Date.now())
+    toast({ title: "Feed Acknowledged", description: "All active alerts marked as processed." })
   }
 
-  const handleWeatherRefresh = () => {
+  const handleWeatherRefresh = async () => {
     setIsWeatherRefreshing(true)
-    setTimeout(() => setIsWeatherRefreshing(false), 1000)
-    toast({
-      title: "Atmospheric Re-Sync",
-      description: "Live weather telemetry updated from satellite feed.",
-    })
+    try {
+      await fetch('/api/weather')
+      toast({
+        title: "Atmospheric Re-Sync",
+        description: "Live weather telemetry updated from satellite feed.",
+      })
+    } catch (e) {}
+    setIsWeatherRefreshing(false)
   }
 
   const currentData = activeDisaster || MOCK_DISASTER
@@ -219,7 +258,7 @@ export default function DashboardPage() {
                 <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", systemOnline ? "bg-emerald-500" : "bg-destructive")} />
                 {systemOnline ? 'LIVE SUBCONTINENT GRID' : 'SATELLITE SYNC FAILED'}
               </Badge>
-              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">{currentData.sector || 'Global'} | T-Zero Sync</span>
+              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">{settings?.primarySector || currentData.sector || 'Global'} | T-Zero Sync</span>
             </div>
           </div>
         </div>
@@ -274,7 +313,7 @@ export default function DashboardPage() {
            <TerraMap 
             center={[72.8777, 19.0760]} 
             zoom={12}
-            enable3D={true}
+            enable3D={settings?.satelliteFidelity ?? true}
             markers={[
               { id: '1', coordinates: [72.8777, 19.0760], type: 'incident', severity: currentData.severity.toLowerCase(), label: currentData.sector || 'Active Point' }
             ]}

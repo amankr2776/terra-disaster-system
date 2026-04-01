@@ -22,6 +22,7 @@ export function Header() {
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(false);
+  const [activeSector, setActiveSector] = useState("Mumbai Sector (S-2)");
   
   const [commanderName, setCommanderName] = useState<string>("Commander");
   const [isNameDialogOpen, setIsNameDialogOpen] = useState(false);
@@ -49,7 +50,13 @@ export function Header() {
       setIsOnline(!!snap.val())
     })
 
-    // 2. Commander Name Logic
+    // 2. Settings Listener
+    const sectorRef = ref(database, 'terra/settings/primarySector')
+    const unsubSector = onValue(sectorRef, (snap) => {
+      if (snap.exists()) setActiveSector(snap.val())
+    })
+
+    // 3. Commander Name Logic
     const savedName = localStorage.getItem('terra_commander_name');
     if (savedName) {
       setCommanderName(savedName);
@@ -61,6 +68,7 @@ export function Header() {
     return () => {
       clearInterval(interval);
       unsubConnection();
+      unsubSector();
     };
   }, []);
 
@@ -92,17 +100,20 @@ export function Header() {
         
         <Separator orientation="vertical" className="h-6 bg-white/10 hidden md:block" />
         
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/20">
-          <div className={cn(
-            "w-2 h-2 rounded-full",
-            isOnline ? "bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-destructive shadow-[0_0_8px_#ef4444]"
-          )} />
-          <span className={cn(
-            "text-[10px] font-bold uppercase tracking-widest",
-            isOnline ? "text-emerald-500" : "text-destructive"
-          )}>
-            System: {isOnline ? 'Online' : 'Offline'}
-          </span>
+        <div className="hidden lg:flex flex-col gap-0 px-3">
+          <span className="text-[10px] font-black uppercase text-primary tracking-widest">{activeSector}</span>
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              isOnline ? "bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-destructive shadow-[0_0_8px_#ef4444]"
+            )} />
+            <span className={cn(
+              "text-[8px] font-bold uppercase tracking-widest opacity-60",
+              isOnline ? "text-emerald-500" : "text-destructive"
+            )}>
+              LINK: {isOnline ? 'ACTIVE' : 'LOST'}
+            </span>
+          </div>
         </div>
       </div>
 

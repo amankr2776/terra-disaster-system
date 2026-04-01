@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Zap, RotateCcw, Play, Pause, Activity, Box, Waves, Flame, Tornado, Thermometer, Cpu } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { database, ref, onValue } from "@/lib/firebase"
 
 const disasterConfig = {
   flood: { icon: Waves, color: "#45AFDB", label: "Inundation Spread" },
@@ -33,6 +35,8 @@ export default function SimulationPage() {
   const [selectedZone, setSelectedZone] = useState("Colaba")
   const [disasterType, setDisasterType] = useState<keyof typeof disasterConfig>("flood")
   const [intensity, setIntensity] = useState([3])
+  const [simSpeed, setSimSpeed] = useState(1)
+  const [fidelity, setFidelity] = useState(true)
 
   const cityCoords: Record<string, [number, number]> = {
     chennai: [80.2707, 13.0827],
@@ -45,16 +49,27 @@ export default function SimulationPage() {
     setSelectedZone(cityZones[selectedCity][0])
   }, [selectedCity])
 
+  // Neural Settings Link
+  useEffect(() => {
+    const settingsRef = ref(database, 'terra/settings')
+    onValue(settingsRef, (snap) => {
+      const data = snap.val()
+      if (data) {
+        setSimSpeed(data.simulationSpeed || 1)
+        setFidelity(data.satelliteFidelity ?? true)
+      }
+    })
+  }, [])
+
   // Spread and Pulse Animation Generator (GeoJSON Circle)
   const disasterOverlay = useMemo(() => {
     if (!isPlaying && timelineValue[0] === 0) return null
 
     const center = cityCoords[selectedCity]
-    // Pulse effect: adds a slight sine wave to the radius based on current state
     const pulseFactor = isPlaying ? (1 + Math.sin(Date.now() / 200) * 0.05) : 1
     const radius = (timelineValue[0] * intensity[0]) * 0.002 * pulseFactor
     
-    const points = 64
+    const points = fidelity ? 64 : 32
     const coords = []
 
     for (let i = 0; i < points; i++) {
@@ -76,12 +91,14 @@ export default function SimulationPage() {
         geometry: { type: 'Polygon', coordinates: [coords] }
       }]
     }
-  }, [isPlaying, timelineValue, selectedCity, intensity, disasterType])
+  }, [isPlaying, timelineValue, selectedCity, intensity, disasterType, fidelity])
 
-  // Simulation loop
+  // Simulation loop scaled by simSpeed
   useEffect(() => {
     let interval: any
     if (isPlaying) {
+      // 500ms base / simSpeed
+      const tickRate = Math.max(50, 500 / simSpeed)
       interval = setInterval(() => {
         setTimelineValue(prev => {
           const next = prev[0] + 1
@@ -91,17 +108,17 @@ export default function SimulationPage() {
           }
           return [next]
         })
-      }, 500)
+      }, tickRate)
     }
     return () => clearInterval(interval)
-  }, [isPlaying])
+  }, [isPlaying, simSpeed])
 
   const handleSimulate = () => {
     if (!isPlaying) {
       setIsPlaying(true)
       toast({
         title: "Simulation Initiated",
-        description: `Triggering ${disasterType.toUpperCase()} event in ${selectedZone} with intensity ${intensity[0]}.`,
+        description: `Triggering ${disasterType.toUpperCase()} event in ${selectedZone} at ${simSpeed}x velocity.`,
       })
     } else {
       setIsPlaying(false)
@@ -127,7 +144,7 @@ export default function SimulationPage() {
           center={cityCoords[selectedCity]}
           zoom={11}
           disasterOverlay={disasterOverlay}
-          enable3D={true}
+          enable3D={fidelity}
         />
       </div>
 
@@ -224,7 +241,7 @@ export default function SimulationPage() {
         <Card className="glass-card backdrop-blur-3xl border-t-2 border-t-white/10">
           <CardContent className="p-4 space-y-3">
              <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                <span className="text-muted-foreground">Spread Logic</span>
+                <span className="text-muted-foreground">Velocity: {simSpeed}x</span>
                 <span className="text-primary">{disasterConfig[disasterType].label}</span>
              </div>
              <div className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5">
