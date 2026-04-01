@@ -13,7 +13,9 @@ import {
   Bell,
   Radio,
   CircleAlert,
-  Loader2
+  Loader2,
+  WifiOff,
+  AlertTriangle
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,28 +24,53 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { database, ref, onValue } from "@/lib/firebase"
 import { cn } from "@/lib/utils"
 
+// Fallback data for offline/empty states
+const MOCK_DISASTER = {
+  type: "Monitoring",
+  severity: "LOW",
+  sector: "Global Surveillance",
+  affectedPopulation: 0,
+  evacuationPercent: 0,
+  drainageCapacity: 100,
+  minutesToInundation: 0
+}
+
 export default function DashboardPage() {
   const [activeDisaster, setActiveDisaster] = useState<any>(null)
   const [weather, setWeather] = useState<any>(null)
   const [tacticalFeed, setTacticalFeed] = useState<any[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [isTimedOut, setIsTimedOut] = useState(false)
 
   useEffect(() => {
     document.title = "TERRA | Command Center"
 
+    // 5-second tactical timeout for loading state
+    const loadTimeout = setTimeout(() => {
+      setLoading(false)
+      setIsTimedOut(true)
+    }, 5000)
+
     // 1. Listen for Active Disaster
     const disasterRef = ref(database, 'terra/activeDisaster')
     const unsubscribeDisaster = onValue(disasterRef, (snapshot) => {
-      setActiveDisaster(snapshot.val())
-      setIsConnected(true)
+      if (snapshot.exists()) {
+        setActiveDisaster(snapshot.val())
+        setIsConnected(true)
+        setIsTimedOut(false)
+        setLoading(false)
+        clearTimeout(loadTimeout)
+      }
+    }, () => {
       setLoading(false)
+      clearTimeout(loadTimeout)
     })
 
     // 2. Listen for Weather Telemetry
     const weatherRef = ref(database, 'terra/weatherData')
     const unsubscribeWeather = onValue(weatherRef, (snapshot) => {
-      setWeather(snapshot.val())
+      if (snapshot.exists()) setWeather(snapshot.val())
     })
 
     // 3. Listen for Tactical Feed
@@ -55,7 +82,6 @@ export default function DashboardPage() {
           id,
           ...val
         }))
-        // Sort newest first based on timestamp
         feedArray.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         setTacticalFeed(feedArray.slice(0, 10))
       }
@@ -65,6 +91,7 @@ export default function DashboardPage() {
       unsubscribeDisaster()
       unsubscribeWeather()
       unsubscribeFeed()
+      clearTimeout(loadTimeout)
     }
   }, [])
 
@@ -78,7 +105,8 @@ export default function DashboardPage() {
     }
   }
 
-  const sevConfig = getSeverityConfig(activeDisaster?.severity)
+  const currentData = activeDisaster || MOCK_DISASTER
+  const sevConfig = getSeverityConfig(currentData.severity)
 
   if (loading) {
     return (
@@ -94,6 +122,19 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-theme(spacing.24))] gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 overflow-hidden">
       
+      {/* Offline Alert Banner */}
+      {(!isConnected || isTimedOut) && (
+        <div className="bg-destructive/20 border border-destructive/30 px-4 py-2 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <WifiOff className="h-4 w-4 text-destructive" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-destructive">Neural Link Fragmented — Displaying Cached/Standby Data</span>
+          </div>
+          <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold text-destructive hover:bg-destructive/10" onClick={() => window.location.reload()}>
+            RE-ESTABLISH LINK
+          </Button>
+        </div>
+      )}
+
       {/* Authority Control Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-card p-4 rounded-xl border-l-4 border-l-primary shadow-2xl">
         <div className="flex items-center gap-4">
@@ -103,11 +144,14 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-2xl font-black tracking-tighter uppercase italic">Authority Command Center</h1>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 border-emerald-500/20 text-emerald-500 gap-1.5 px-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                {isConnected ? 'LIVE SUBCONTINENT GRID' : 'SATELLITE SYNCING...'}
+              <Badge variant="outline" className={cn(
+                "text-[10px] gap-1.5 px-2",
+                isConnected ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-destructive/10 border-destructive/20 text-destructive"
+              )}>
+                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isConnected ? "bg-emerald-500" : "bg-destructive")} />
+                {isConnected ? 'LIVE SUBCONTINENT GRID' : 'SATELLITE SYNC FAILED'}
               </Badge>
-              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">{activeDisaster?.sector || 'Global'} | T-Zero Sync</span>
+              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">{currentData.sector || 'Global'} | T-Zero Sync</span>
             </div>
           </div>
         </div>
@@ -148,16 +192,14 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
         
-        {/* Full Screen Tactical Map */}
+        {/* Tactical Map */}
         <div className="lg:col-span-8 relative">
            <TerraMap 
-            center={[72.8777, 19.0760]} // Mumbai Tactical Grid
+            center={[72.8777, 19.0760]} 
             zoom={12}
             enable3D={true}
             markers={[
-              { id: '1', coordinates: [72.8777, 19.0760], type: 'incident', severity: 'high', label: activeDisaster?.sector || 'Active Point' },
-              { id: '2', coordinates: [72.8250, 19.0500], type: 'incident', severity: 'medium', label: 'Inundation Zone' },
-              { id: '3', coordinates: [72.8500, 19.1000], type: 'resource', label: 'Tactical Team' }
+              { id: '1', coordinates: [72.8777, 19.0760], type: 'incident', severity: currentData.severity.toLowerCase(), label: currentData.sector || 'Active Point' }
             ]}
           />
           <div className="absolute top-4 left-4 glass p-4 rounded-xl border-white/10 z-10 max-w-xs space-y-3 pointer-events-none">
@@ -166,20 +208,20 @@ export default function DashboardPage() {
                 <span className="text-xs font-black uppercase italic tracking-widest">Active Analysis</span>
              </div>
              <p className="text-[11px] leading-relaxed text-muted-foreground font-medium">
-                {activeDisaster?.sector || 'Unknown District'} drainage system at <span className="text-primary font-bold">{activeDisaster?.drainageCapacity || 0}% capacity</span>. Projected inundation within <span className="text-amber-500 font-bold">{activeDisaster?.minutesToInundation || 0} minutes</span>.
+                {currentData.sector} drainage system at <span className="text-primary font-bold">{currentData.drainageCapacity}% capacity</span>. {currentData.minutesToInundation > 0 && `Projected inundation within ${currentData.minutesToInundation} minutes.`}
              </p>
           </div>
         </div>
 
-        {/* Intelligence Right Sidebar */}
+        {/* Intelligence Sidebar */}
         <div className="lg:col-span-4 flex flex-col gap-6 overflow-hidden">
           
-          <Card className={cn("glass-card border-t-4 shadow-2xl transition-all duration-500", activeDisaster?.severity === 'CRITICAL' ? 'border-t-destructive' : 'border-t-primary')}>
+          <Card className={cn("glass-card border-t-4 shadow-2xl transition-all duration-500", currentData.severity === 'CRITICAL' ? 'border-t-destructive' : 'border-t-primary')}>
             <CardHeader className="pb-3 border-b border-white/5">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xs font-black uppercase tracking-[0.2em]">Strategic Threat</CardTitle>
-                <Badge variant={activeDisaster?.severity === 'CRITICAL' ? 'destructive' : 'outline'} className={cn("animate-pulse text-[9px] px-2 h-5 uppercase", activeDisaster?.severity !== 'CRITICAL' && "text-primary border-primary/20")}>
-                  {activeDisaster?.severity || 'MONITORING'}
+                <Badge variant={currentData.severity === 'CRITICAL' ? 'destructive' : 'outline'} className={cn("animate-pulse text-[9px] px-2 h-5 uppercase", currentData.severity !== 'CRITICAL' && "text-primary border-primary/20")}>
+                  {currentData.severity}
                 </Badge>
               </div>
             </CardHeader>
@@ -187,22 +229,22 @@ export default function DashboardPage() {
                <div className="text-center bg-white/5 p-4 rounded-xl border border-white/5">
                   <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Affected Population</div>
                   <div className="text-4xl font-black tracking-tighter text-white">
-                    {activeDisaster?.affectedPopulation?.toLocaleString() || 0}
+                    {currentData.affectedPopulation?.toLocaleString()}
                   </div>
                   <div className="flex items-center justify-center gap-2 mt-2">
                      <Users className="h-3 w-3 text-primary" />
-                     <span className="text-[10px] font-mono text-primary font-bold">{activeDisaster?.evacuationPercent || 0}% Evacuation Verified</span>
+                     <span className="text-[10px] font-mono text-primary font-bold">{currentData.evacuationPercent}% Evacuation Verified</span>
                   </div>
                </div>
 
                <div className="space-y-4">
                   <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
                     <span>Sector Integrity</span>
-                    <span className={cn("font-mono", (100 - (activeDisaster?.drainageCapacity || 0)) > 50 ? "text-destructive" : "text-amber-500")}>
-                      {100 - (activeDisaster?.drainageCapacity || 0)}% DEPLETION
+                    <span className={cn("font-mono", (100 - currentData.drainageCapacity) > 50 ? "text-destructive" : "text-amber-500")}>
+                      {100 - currentData.drainageCapacity}% DEPLETION
                     </span>
                   </div>
-                  <Progress value={activeDisaster?.drainageCapacity || 0} className={cn("h-1.5", (activeDisaster?.drainageCapacity || 0) < 40 ? "[&>div]:bg-destructive" : "[&>div]:bg-primary")} />
+                  <Progress value={currentData.drainageCapacity} className={cn("h-1.5", currentData.drainageCapacity < 40 ? "[&>div]:bg-destructive" : "[&>div]:bg-primary")} />
                </div>
 
                <div className="grid grid-cols-2 gap-3">
@@ -226,8 +268,8 @@ export default function DashboardPage() {
             <ScrollArea className="flex-1">
                <div className="divide-y divide-white/5">
                   {tacticalFeed.length > 0 ? (
-                    tacticalFeed.map((alert, i) => (
-                      <div key={alert.id} className="p-4 hover:bg-white/5 transition-colors cursor-default group animate-in fade-in slide-in-from-top-2 duration-500">
+                    tacticalFeed.map((alert) => (
+                      <div key={alert.id} className="p-4 hover:bg-white/5 transition-colors cursor-default group">
                          <div className="flex items-start gap-3">
                             <div className={cn(
                               "mt-0.5 rounded-full p-1.5",
@@ -239,9 +281,6 @@ export default function DashboardPage() {
                             <div className="flex-1">
                               <p className="text-xs font-medium leading-relaxed group-hover:text-white transition-colors">{alert.message}</p>
                               <div className="flex items-center gap-2 mt-1">
-                                <span className="text-[9px] font-mono text-muted-foreground">
-                                  {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
                                 <Badge className={cn(
                                   "text-[8px] h-3.5 px-1 border-none font-black uppercase",
                                   alert.source === 'ai' ? "bg-accent/20 text-accent" : "bg-primary/20 text-primary"
@@ -255,9 +294,9 @@ export default function DashboardPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full p-12 text-center">
-                      <Radio className="h-8 w-8 text-muted-foreground/20 mb-2" />
-                      <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Awaiting Tactical Feed Sync...</p>
+                    <div className="flex flex-col items-center justify-center h-full p-12 text-center opacity-40">
+                      <AlertTriangle className="h-8 w-8 text-muted-foreground mb-2" />
+                      <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">No Active Alerts In Feed</p>
                     </div>
                   )}
                </div>

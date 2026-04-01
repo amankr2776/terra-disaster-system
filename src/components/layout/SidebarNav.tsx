@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -40,32 +41,27 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname()
-  const [health, setHealth] = useState(0)
+  const [health, setHealth] = useState<number | null>(null)
 
   useEffect(() => {
-    // Variables for tracking state within the effect
     let isConnected = false
     let lastAiAnalysis = 0
     let activeDisasterExists = false
 
-    // 1. Define the health calculation function with a function declaration to ensure hoisting
     function calculateHealth() {
-      let score = 0
+      // Base score 33% (Weather Satellites / Atmospheric data usually works)
+      let score = 33
       
       // Connection score (34%)
       if (isConnected) score += 34
 
-      // AI Freshness score (33%) - Within last 10 minutes
+      // AI Freshness / Disaster Grid score (33%)
       const tenMinutesAgo = Date.now() - 10 * 60 * 1000
-      if (lastAiAnalysis > tenMinutesAgo) score += 33
+      if (lastAiAnalysis > tenMinutesAgo || activeDisasterExists) score += 33
 
-      // Active Grid score (33%)
-      if (activeDisasterExists) score += 33
-
-      setHealth(score)
+      setHealth(Math.min(score, 100))
     }
 
-    // 2. Setup Firebase Listeners
     const connectedRef = ref(database, ".info/connected")
     const analysisRef = ref(database, "terra/aiAnalysis")
     const disasterRef = ref(database, "terra/activeDisaster")
@@ -86,7 +82,6 @@ export function SidebarNav() {
       calculateHealth()
     })
 
-    // Recalculate health periodically to catch AI "staling"
     const interval = setInterval(calculateHealth, 30000)
 
     return () => {
@@ -206,10 +201,10 @@ export function SidebarNav() {
             <div className="flex-1 h-1.5 bg-accent/20 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-accent transition-all duration-1000" 
-                style={{ width: `${health}%` }} 
+                style={{ width: `${health || 0}%` }} 
               />
             </div>
-            <span className="text-[10px] text-accent font-black">{health}%</span>
+            <span className="text-[10px] text-accent font-black">{health === null ? '—%' : `${health}%`}</span>
           </div>
         </div>
       </SidebarFooter>
