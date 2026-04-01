@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 
 type ThreatLevel = 'safe' | 'warning' | 'high' | 'critical';
 
@@ -31,6 +32,7 @@ const RELIEF_CAMPS = [
   { name: "City Central School", distance: "0.8 km", status: "Open", capacity: "80%" },
   { name: "Community Hall B", distance: "1.5 km", status: "Open", capacity: "45%" },
   { name: "Sports Arena North", distance: "2.2 km", status: "Full", capacity: "100%" },
+  { name: "East Metro Shelter", distance: "3.1 km", status: "Open", capacity: "12%" },
 ]
 
 export default function CitizenPortalPage() {
@@ -262,22 +264,57 @@ export default function CitizenPortalPage() {
           Relief Camps
         </h2>
         <div className="grid grid-cols-1 gap-2">
-          {RELIEF_CAMPS.map((camp, i) => (
-            <div key={i} className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/20 rounded-lg">
-                  <Tent className="h-4 w-4 text-primary" />
+          {RELIEF_CAMPS.map((camp, i) => {
+            const capValue = parseInt(camp.capacity)
+            const isFull = capValue >= 100
+            const isWarning = capValue >= 60 && capValue < 100
+
+            return (
+              <div 
+                key={i} 
+                className={cn(
+                  "p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between transition-all duration-300",
+                  isFull && "opacity-40"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-lg transition-colors", 
+                    isFull ? "bg-muted" : "bg-primary/20"
+                  )}>
+                    <Tent className={cn(
+                      "h-4 w-4", 
+                      isFull ? "text-muted-foreground" : "text-primary"
+                    )} />
+                  </div>
+                  <div>
+                    <p className={cn(
+                      "text-sm font-bold transition-all", 
+                      isFull && "line-through text-muted-foreground"
+                    )}>
+                      {camp.name}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">{camp.distance} away</p>
+                    {isFull && (
+                      <p className="text-[8px] text-destructive font-black uppercase tracking-tighter mt-1 animate-pulse">
+                        Do not proceed — no capacity available
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold">{camp.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{camp.distance} away</p>
-                </div>
+                <Badge 
+                  variant={isFull ? "destructive" : "outline"} 
+                  className={cn(
+                    "text-[9px] font-bold uppercase tracking-wider",
+                    !isFull && isWarning && "border-amber-500 text-amber-500 bg-amber-500/10",
+                    !isFull && !isWarning && "border-emerald-500 text-emerald-500 bg-emerald-500/10"
+                  )}
+                >
+                  {isFull ? "FULL" : camp.status} {camp.capacity}
+                </Badge>
               </div>
-              <Badge variant={camp.status === 'Full' ? 'destructive' : 'outline'} className="text-[9px] font-bold">
-                {camp.status} {camp.capacity}
-              </Badge>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
