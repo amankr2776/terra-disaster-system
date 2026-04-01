@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -7,6 +8,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { database, ref, onValue } from "@/lib/firebase"
 import {
   Dialog,
   DialogContent,
@@ -19,8 +21,7 @@ import { Input } from "@/components/ui/input"
 export function Header() {
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [isInitialSync, setIsInitialSync] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
   
   const [commanderName, setCommanderName] = useState<string>("Commander");
   const [isNameDialogOpen, setIsNameDialogOpen] = useState(false);
@@ -31,16 +32,9 @@ export function Header() {
     try {
       const res = await fetch('/api/weather');
       const data = await res.json();
-      
-      if (data.error) {
-        setError(true);
-        if (data.telemetry) setWeather(data.telemetry);
-      } else {
-        setWeather(data.telemetry);
-        setError(false);
-      }
+      setWeather(data.telemetry || null);
     } catch (e) {
-      setError(true);
+      console.error("Weather sync failed", e);
     } finally {
       setLoading(false);
     }
@@ -49,7 +43,13 @@ export function Header() {
   useEffect(() => {
     fetchWeather();
     
-    // Check for commander name
+    // 1. Firebase Connection Listener
+    const connectedRef = ref(database, ".info/connected")
+    const unsubConnection = onValue(connectedRef, (snap) => {
+      setIsOnline(!!snap.val())
+    })
+
+    // 2. Commander Name Logic
     const savedName = localStorage.getItem('terra_commander_name');
     if (savedName) {
       setCommanderName(savedName);
@@ -57,14 +57,10 @@ export function Header() {
       setIsNameDialogOpen(true);
     }
 
-    const timer = setTimeout(() => {
-      setIsInitialSync(false);
-    }, 2000);
-
     const interval = setInterval(fetchWeather, 60000);
     return () => {
       clearInterval(interval);
-      clearTimeout(timer);
+      unsubConnection();
     };
   }, []);
 
@@ -78,7 +74,7 @@ export function Header() {
 
   const displayVal = (val: string | undefined) => {
     if (loading && !weather) return "---";
-    if (error || !val || val === "N/A") return "N/A";
+    if (!val || val === "N/A") return "N/A";
     return val;
   };
 
@@ -98,14 +94,14 @@ export function Header() {
         
         <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/20">
           <div className={cn(
-            "w-2 h-2 rounded-full animate-pulse",
-            isInitialSync ? "bg-primary" : error ? "bg-amber-500" : "bg-emerald-500"
+            "w-2 h-2 rounded-full",
+            isOnline ? "bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-destructive shadow-[0_0_8px_#ef4444]"
           )} />
           <span className={cn(
             "text-[10px] font-bold uppercase tracking-widest",
-            isInitialSync ? "text-primary" : error ? "text-amber-500" : "text-emerald-500"
+            isOnline ? "text-emerald-500" : "text-destructive"
           )}>
-            System: {isInitialSync ? 'Syncing...' : error ? 'Degraded' : 'Online'}
+            System: {isOnline ? 'Online' : 'Offline'}
           </span>
         </div>
       </div>

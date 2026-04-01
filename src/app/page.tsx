@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { database, ref, onValue, limitToLast, query } from "@/lib/firebase"
 import dynamic from "next/dynamic"
+import { cn } from "@/lib/utils"
 
 const ThreeGlobe = dynamic(() => import("@/components/landing/ThreeGlobe"), { 
   ssr: false,
@@ -23,16 +24,18 @@ export default function LandingPage() {
     // 1. Listen for data for stats
     const disasterRef = ref(database, 'terra/activeDisaster')
     const analysisRef = ref(database, 'terra/aiAnalysis')
-    const feedRef = query(ref(database, 'terra/tacticalFeed'), limitToLast(10))
+    const feedRef = query(ref(database, 'terra/tacticalFeed'), limitToLast(8))
 
     const unsubDisaster = onValue(disasterRef, (snap) => setActiveDisaster(snap.val()))
     const unsubAnalysis = onValue(analysisRef, (snap) => setAnalysis(snap.val()))
     const unsubFeed = onValue(feedRef, (snap) => {
       const data = snap.val()
       if (data) {
-        setTickerMessages(Object.values(data).sort((a: any, b: any) => 
+        // Convert to array and sort by newest first
+        const messages = Object.values(data).sort((a: any, b: any) => 
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        ))
+        )
+        setTickerMessages(messages)
       }
     })
 
@@ -127,8 +130,14 @@ export default function LandingPage() {
           <div className="flex whitespace-nowrap animate-ticker py-2">
             {[...tickerMessages, ...tickerMessages].map((msg, i) => (
               <div key={i} className="flex items-center gap-4 px-8 border-r border-white/5 group hover:bg-white/5 transition-colors cursor-default">
-                <span className={msg.priority === 'CRITICAL' ? 'text-destructive' : msg.priority === 'WARNING' ? 'text-amber-500' : 'text-primary'}>●</span>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white/80 group-hover:text-white transition-colors">
+                <span className={cn(
+                  "text-lg",
+                  msg.priority === 'CRITICAL' ? 'text-destructive' : msg.priority === 'WARNING' ? 'text-amber-500' : 'text-primary'
+                )}>●</span>
+                <span className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  msg.priority === 'CRITICAL' ? 'text-destructive' : msg.priority === 'WARNING' ? 'text-amber-500' : 'text-white/80 group-hover:text-white'
+                )}>
                   {msg.priority}: {msg.message} — {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
@@ -148,7 +157,7 @@ export default function LandingPage() {
           100% { transform: translateX(-50%); }
         }
         .animate-ticker {
-          animation: ticker 60s linear infinite;
+          animation: ticker 40s linear infinite;
         }
         .animate-ticker:hover {
           animation-play-state: paused;

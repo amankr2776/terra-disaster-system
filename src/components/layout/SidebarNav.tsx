@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -11,7 +12,8 @@ import {
   Settings, 
   Package,
   Layers,
-  UserCircle
+  UserCircle,
+  Lock
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -26,6 +28,7 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar"
+import { database, ref, onValue } from "@/lib/firebase"
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -38,48 +41,62 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname()
-  const [health, setHealth] = useState(92)
+  const [health, setHealth] = useState(0)
 
   useEffect(() => {
-    const calculateHealth = async () => {
-      let scores = [];
+    // 1. Connection Listener
+    const connectedRef = ref(database, ".info/connected")
+    // 2. AI Analysis Listener
+    const analysisRef = ref(database, "terra/aiAnalysis")
+    // 3. Disaster Listener
+    const disasterRef = ref(database, "terra/activeDisaster")
+
+    let isConnected = false
+    let lastAiAnalysis = 0
+    let activeDisasterExists = false
+
+    const unsubConnected = onValue(connectedRef, (snap) => {
+      isConnected = !!snap.val()
+      calculateHealth()
+    })
+
+    const unsubAnalysis = onValue(analysisRef, (snap) => {
+      const data = snap.val()
+      lastAiAnalysis = data?.lastUpdated || 0
+      calculateHealth()
+    })
+
+    const unsubDisaster = onValue(disasterRef, (snap) => {
+      activeDisasterExists = !!snap.val()
+      calculateHealth()
+    })
+
+    const calculateHealth = () => {
+      let score = 0
       
-      // 1. Weather API check
-      try {
-        const res = await fetch('/api/weather');
-        scores.push(res.ok ? 100 : 0);
-      } catch {
-        scores.push(0);
-      }
+      // Connection score (34%)
+      if (isConnected) score += 34
 
-      // 2. AI Commander API check (using a quick ping/metadata check if possible, or just res ok)
-      try {
-        const res = await fetch('/api/forecast');
-        scores.push(res.ok ? 100 : 0);
-      } catch {
-        scores.push(0);
-      }
+      // AI Freshness score (33%) - Within last 10 minutes
+      const tenMinutesAgo = Date.now() - 10 * 60 * 1000
+      if (lastAiAnalysis > tenMinutesAgo) score += 33
 
-      // 3. Geolocation check
-      if ("geolocation" in navigator) {
-        try {
-          const permission = await navigator.permissions.query({ name: 'geolocation' });
-          scores.push(permission.state === 'granted' || permission.state === 'prompt' ? 100 : 0);
-        } catch {
-          scores.push(100); // Default to working if API check fails
-        }
-      } else {
-        scores.push(0);
-      }
+      // Active Grid score (33%)
+      if (activeDisasterExists) score += 33
 
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-      setHealth(Math.round(avg));
-    };
+      setHealth(score)
+    }
 
-    calculateHealth();
-    const interval = setInterval(calculateHealth, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    // Recalculate health periodically to catch AI "staling"
+    const interval = setInterval(calculateHealth, 30000)
+
+    return () => {
+      unsubConnected()
+      unsubAnalysis()
+      unsubDisaster()
+      clearInterval(interval)
+    }
+  }, [])
 
   return (
     <Sidebar collapsible="icon" className="border-r border-white/10 bg-sidebar">
@@ -147,6 +164,34 @@ export function SidebarNav() {
                   <Link href="/citizen">
                     <UserCircle className={cn("h-5 w-5", pathname === "/citizen" ? "text-white" : "text-muted-foreground group-hover:text-accent transition-colors")} />
                     <span className="font-medium">Citizen Portal</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupLabel className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-4 mb-4 group-data-[collapsible=icon]:hidden">
+            Administration
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="px-2">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/authority-input"}
+                  tooltip="Authority Input"
+                  className={cn(
+                    "h-11 px-4 transition-all group",
+                    pathname === "/authority-input"
+                      ? "bg-destructive text-white shadow-lg shadow-destructive/20 hover:bg-destructive/90 hover:text-white"
+                      : "text-muted-foreground hover:bg-white/5 hover:text-white"
+                  )}
+                >
+                  <Link href="/authority-input">
+                    <Lock className={cn("h-5 w-5", pathname === "/authority-input" ? "text-white" : "text-muted-foreground group-hover:text-destructive transition-colors")} />
+                    <span className="font-medium">Authority Input</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
