@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { TerraMap } from "@/components/map/TerraMap"
 import { 
@@ -15,11 +15,15 @@ import {
   AlertCircle,
   TrafficCone,
   Tent,
-  LifeBuoy
+  LifeBuoy,
+  Loader2,
+  Edit2,
+  Check
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Input } from "@/components/ui/input"
 
 type ThreatLevel = 'safe' | 'warning' | 'high' | 'critical';
 
@@ -30,10 +34,57 @@ const RELIEF_CAMPS = [
 ]
 
 export default function CitizenPortalPage() {
-  const [currentThreat] = useState<{level: ThreatLevel; area: string}>({
+  const [currentThreat] = useState<{level: ThreatLevel}>({
     level: "critical",
-    area: "Adyar Sector"
   });
+
+  const [userLocation, setUserLocation] = useState<string>("")
+  const [isDetecting, setIsDetecting] = useState(false)
+  const [isEditingLocation, setIsEditingLocation] = useState(false)
+  const [locationInput, setLocationInput] = useState("")
+
+  useEffect(() => {
+    const savedLocation = localStorage.getItem('terra_user_location')
+    if (savedLocation) {
+      setUserLocation(savedLocation)
+      setLocationInput(savedLocation)
+    } else {
+      detectLocation()
+    }
+  }, [])
+
+  const detectLocation = () => {
+    if (!navigator.geolocation) return
+    
+    setIsDetecting(true)
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      try {
+        const { latitude, longitude } = position.coords
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`)
+        const data = await res.json()
+        const areaName = data.address?.suburb || data.address?.neighbourhood || data.address?.city_district || data.address?.city || "Unknown Sector"
+        
+        setUserLocation(areaName)
+        setLocationInput(areaName)
+        localStorage.setItem('terra_user_location', areaName)
+      } catch (error) {
+        console.error("Location resolution failed", error)
+      } finally {
+        setIsDetecting(false)
+      }
+    }, (error) => {
+      console.warn("Geolocation denied", error)
+      setIsDetecting(false)
+    })
+  }
+
+  const handleLocationSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!locationInput.trim()) return
+    setUserLocation(locationInput)
+    localStorage.setItem('terra_user_location', locationInput)
+    setIsEditingLocation(false)
+  }
 
   const getThreatConfig = (level: ThreatLevel) => {
     switch (level) {
@@ -81,9 +132,48 @@ export default function CitizenPortalPage() {
       <div className={`${config.bg} text-white p-6 rounded-2xl shadow-2xl space-y-4 border-b-4 border-black/20`}>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase tracking-widest opacity-90">Your Area: {currentThreat.area}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-90">
+                Your Area: {isDetecting ? "Detecting..." : (userLocation || "Not Set")}
+              </span>
+              {!isDetecting && (
+                <button 
+                  onClick={() => setIsEditingLocation(!isEditingLocation)}
+                  className="p-1 hover:bg-white/10 rounded-md transition-colors"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
             <Badge className="bg-white/20 text-white border-none text-[9px] font-bold">{config.badge}</Badge>
           </div>
+
+          {isEditingLocation ? (
+            <form onSubmit={handleLocationSubmit} className="flex gap-2 mb-2 animate-in fade-in slide-in-from-top-1">
+              <Input 
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                placeholder="Enter your area..."
+                className="bg-white/20 border-white/30 text-white placeholder:text-white/60 h-9 font-bold text-sm focus:ring-white"
+                autoFocus
+              />
+              <Button type="submit" size="icon" className="h-9 w-9 bg-white text-destructive hover:bg-white/90">
+                <Check className="h-4 w-4" />
+              </Button>
+            </form>
+          ) : !userLocation && !isDetecting ? (
+            <div className="mb-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-white/10 border-white/30 text-white hover:bg-white/20 font-black text-[10px] tracking-widest uppercase"
+                onClick={() => setIsEditingLocation(true)}
+              >
+                Set Your Location
+              </Button>
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-3">
             <config.icon className={`h-8 w-8 shrink-0 ${currentThreat.level === 'critical' ? 'animate-pulse' : ''}`} />
             <h1 className="text-2xl font-black leading-tight tracking-tighter">
