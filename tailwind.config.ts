@@ -11,8 +11,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['Inter', 'sans-serif'],
-        headline: ['Inter', 'sans-serif'],
+        body: ['var(--font-space-grotesk)', 'sans-serif'],
+        headline: ['var(--font-rajdhani)', 'sans-serif'],
+        rajdhani: ['var(--font-rajdhani)', 'sans-serif'],
+        space: ['var(--font-space-grotesk)', 'sans-serif'],
         code: ['monospace'],
       },
       colors: {

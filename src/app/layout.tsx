@@ -5,6 +5,18 @@ import { SidebarNav } from '@/components/layout/SidebarNav'
 import { Header } from '@/components/layout/Header'
 import { Toaster } from '@/components/ui/toaster'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { Rajdhani, Space_Grotesk } from 'next/font/google'
+
+const rajdhani = Rajdhani({ 
+  weight: ['300', '400', '500', '600', '700'],
+  subsets: ['latin'],
+  variable: '--font-rajdhani',
+})
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-space-grotesk',
+})
 
 export const metadata: Metadata = {
   title: 'TERRA | Disaster Intelligence',
@@ -17,12 +29,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
+    <html lang="en" className={`${rajdhani.variable} ${spaceGrotesk.variable} dark`}>
       <body className="font-body bg-background text-foreground overflow-hidden">
         <SidebarProvider>
           <div className="flex h-screen w-full">
