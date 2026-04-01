@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { generateDisasterForecast, type GenerateDisasterForecastInput, type GenerateDisasterForecastOutput } from "@/ai/flows/generate-disaster-forecast"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TerraMap } from "@/components/map/TerraMap"
@@ -16,48 +15,107 @@ import {
   ChevronRight,
   Zap,
   ShieldAlert,
-  TrendingUp
+  TrendingUp,
+  Info,
+  Wind,
+  Droplets,
+  AlertCircle
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { database, ref, onValue } from "@/lib/firebase"
+import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
-const initialTimeline = [
-  { label: "Now", rainfall: "8.2mm", severity: 45, temp: "24°C", risk: "Warning" },
-  { label: "+1hr", rainfall: "15.4mm", severity: 82, temp: "22°C", risk: "Critical" },
-  { label: "+2hr", rainfall: "20.1mm", severity: 94, temp: "21°C", risk: "Critical" },
-  { label: "+3hr", rainfall: "12.5mm", severity: 70, temp: "22°C", risk: "High" },
-  { label: "+4hr", rainfall: "4.2mm", severity: 30, temp: "23°C", risk: "Warning" },
-  { label: "+6hr", rainfall: "1.2mm", severity: 15, temp: "24°C", risk: "Low" },
-]
+const FALLBACK_FORECAST = {
+  summary: "Establishing neural link to tactical nodes. Satellite telemetry sync in progress...",
+  modelFidelity: 94.2,
+  primaryRisk: "Atmospheric Instability",
+  targetZone: "Coastal Sector 4",
+  immediateAction: "Initiate standard drainage monitoring protocols.",
+  hourlyForecast: [
+    { hour: "Now", rainfall: 8, severity: "Warning", predictedSeverityPercent: 45, temperature: 24, windSpeed: 12, drainageLoad: 40, evacuationUrgency: "LOW" },
+    { hour: "+1hr", rainfall: 15, severity: "High", predictedSeverityPercent: 82, temperature: 22, windSpeed: 18, drainageLoad: 65, evacuationUrgency: "MODERATE" },
+    { hour: "+2hr", rainfall: 20, severity: "Critical", predictedSeverityPercent: 94, temperature: 21, windSpeed: 25, drainageLoad: 92, evacuationUrgency: "HIGH" },
+    { hour: "+3hr", rainfall: 12, severity: "High", predictedSeverityPercent: 70, temperature: 22, windSpeed: 20, drainageLoad: 80, evacuationUrgency: "HIGH" },
+    { hour: "+4hr", rainfall: 4, severity: "Warning", predictedSeverityPercent: 30, temperature: 23, windSpeed: 15, drainageLoad: 50, evacuationUrgency: "MODERATE" },
+    { hour: "+6hr", rainfall: 1, severity: "Low", predictedSeverityPercent: 15, temperature: 24, windSpeed: 10, drainageLoad: 20, evacuationUrgency: "LOW" },
+  ]
+}
 
 export default function ForecastPage() {
+  const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [forecastResult, setForecastResult] = useState<GenerateDisasterForecastOutput | null>(null)
-  
-  const [inputs] = useState<GenerateDisasterForecastInput>({
-    regionDescription: "Bangalore Metropolitan Area",
-    currentWeatherPatterns: "Localized heavy convection, risk of urban flash flooding",
-    historicalWeatherData: "Increased frequency of extreme rainfall events during monsoon",
-    currentSeismicActivity: "Quiet",
-    historicalSeismicData: "Stable",
-    currentGeographicConditions: "Rapid urbanization causing reduced infiltration",
-    historicalDisasterEvents: "2022 Urban Flooding",
-  })
+  const [forecast, setForecast] = useState<any>(FALLBACK_FORECAST)
+  const [expandedCard, setExpandedCard] = useState<number | null>(0)
+  const [isProtocolOpen, setIsProtocolOpen] = useState(false)
+  const [activeDisaster, setActiveDisaster] = useState<any>(null)
 
-  const handleGenerate = async () => {
+  useEffect(() => {
+    document.title = "TERRA | Forecast Projection";
+
+    const forecastRef = ref(database, 'terra/forecast')
+    const unsubForecast = onValue(forecastRef, (snapshot) => {
+      if (snapshot.exists()) setForecast(snapshot.val())
+    })
+
+    const disasterRef = ref(database, 'terra/activeDisaster')
+    const unsubDisaster = onValue(disasterRef, (snapshot) => {
+      setActiveDisaster(snapshot.val())
+    })
+
+    return () => {
+      unsubForecast()
+      unsubDisaster()
+    }
+  }, [])
+
+  const handleSyncForecast = async () => {
     setLoading(true)
     try {
-      const result = await generateDisasterForecast(inputs)
-      setForecastResult(result)
+      const res = await fetch('/api/ai-forecast', { method: 'POST' })
+      if (!res.ok) throw new Error('Neural sync failed')
+      
+      toast({
+        title: "Forecast Synchronized",
+        description: "Neural AI has projected a fresh 6-hour tactical timeline.",
+      })
     } catch (error) {
-      console.error(error)
+      toast({
+        variant: "destructive",
+        title: "Sync Error",
+        description: "Could not establish connection to AI prediction clusters.",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const timeline = forecastResult?.timeline || initialTimeline
+  const generateProtocols = (action: string) => {
+    return [
+      `Analyze: ${action}`,
+      "Deploy rapid response units to marked target zones.",
+      "Activate local drainage bypass mechanisms.",
+      "Broadcast evacuation directives to citizen nodes.",
+      "Monitor structural integrity of key levees."
+    ]
+  }
+
+  const getSeverityColor = (sev: string) => {
+    switch (sev?.toUpperCase()) {
+      case 'CRITICAL': return 'bg-destructive/10 text-destructive border-destructive/20'
+      case 'HIGH': return 'bg-orange-500/10 text-orange-500 border-orange-500/20'
+      case 'WARNING': return 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+      default: return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+    }
+  }
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -68,50 +126,60 @@ export default function ForecastPage() {
             <TrendingUp className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Prediction Timeline</h1>
-            <p className="text-muted-foreground">Neural predictive modeling: Bangalore Strategic Sector</p>
+            <h1 className="text-3xl font-black tracking-tight uppercase italic">Prediction Timeline</h1>
+            <p className="text-muted-foreground text-sm font-medium">Neural Predictive Modeling: {activeDisaster?.sector || 'Global'}</p>
           </div>
         </div>
-        <Button onClick={handleGenerate} disabled={loading} className="gap-2 bg-primary shadow-lg shadow-primary/20 h-11 px-6 font-bold uppercase tracking-wider">
+        <Button 
+          onClick={handleSyncForecast} 
+          disabled={loading} 
+          className="gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 h-11 px-8 font-black uppercase tracking-widest text-[10px]"
+        >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-          {loading ? "Syncing..." : "Sync AI Forecast"}
+          {loading ? "SYNCING..." : "SYNC AI FORECAST"}
         </Button>
       </div>
 
       {/* Top: Summary Section */}
-      <Card className="glass-card border-l-4 border-l-primary overflow-hidden">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between bg-white/5">
-          <CardTitle className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-2">
+      <Card className="glass-card border-l-4 border-l-primary overflow-hidden shadow-2xl">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between bg-white/5 border-b border-white/5">
+          <CardTitle className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Neural Assessment Summary
           </CardTitle>
-          <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary text-[10px]">Model Fidelity: 99.4%</Badge>
+          <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary text-[9px] font-mono">
+            Model Fidelity: {forecast.modelFidelity || 0}%
+          </Badge>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="space-y-3">
-              <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-[0.1em]">Primary Risk Vector</span>
-              <div className="flex items-center gap-2 text-xl font-bold text-destructive">
+              <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Primary Risk Vector</span>
+              <div className="flex items-center gap-2 text-xl font-black text-destructive uppercase italic">
                 <AlertTriangle className="h-5 w-5" />
-                Drainage Failure
+                {forecast.primaryRisk || "Monitoring"}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">Projected stormwater overflow: <span className="text-white font-bold">92% capacity</span> at peak rainfall.</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">Predicted severity peaked at <span className="text-white font-bold">{Math.max(...forecast.hourlyForecast.map((h:any) => h.predictedSeverityPercent || 0))}%</span> over horizon.</p>
             </div>
             <div className="space-y-3">
-              <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-[0.1em]">Target Zone</span>
-              <div className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Target Zone</span>
+              <div className="text-xl font-black text-white flex items-center gap-2 uppercase italic">
                 <Globe className="h-5 w-5 text-primary opacity-50" />
-                Sector 3 (Civic)
+                {forecast.targetZone || "Global"}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">Density-weighted impact: <span className="text-white font-bold">High (Level 4)</span></p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">Impact sensitivity calibrated for <span className="text-white font-bold">Density Group 4</span>.</p>
             </div>
             <div className="space-y-3">
-              <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-[0.1em]">Immediate Action</span>
-              <div className="text-xl font-bold text-accent flex items-center gap-2">
+              <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Immediate Action</span>
+              <div className="text-xl font-black text-accent flex items-center gap-2 uppercase italic">
                 <ShieldAlert className="h-5 w-5 opacity-50" />
-                Mobilize Rapid Teams
+                {forecast.immediateAction || "Standby"}
               </div>
-              <Button variant="link" className="p-0 h-auto text-[10px] text-accent font-bold uppercase gap-1 group">
+              <Button 
+                variant="link" 
+                onClick={() => setIsProtocolOpen(true)}
+                className="p-0 h-auto text-[10px] text-accent font-black uppercase gap-1 group tracking-widest"
+              >
                 View Protocol <ChevronRight className="h-3 w-3 group-hover:translate-x-1 transition-transform" />
               </Button>
             </div>
@@ -120,99 +188,165 @@ export default function ForecastPage() {
       </Card>
 
       {/* Center: Map Prediction View */}
-      <div className="flex-1 relative min-h-[400px] rounded-xl overflow-hidden border border-white/10 shadow-2xl group">
+      <div className="flex-1 relative min-h-[350px] rounded-xl overflow-hidden border border-white/10 shadow-2xl group">
         <TerraMap 
-          center={[77.5946, 12.9716]} // Bangalore
+          center={activeDisaster?.sector?.includes('Mumbai') ? [72.8777, 19.0760] : [77.5946, 12.9716]}
           zoom={12}
           markers={[
-            { id: 'p1', coordinates: [77.5946, 12.9716], type: 'incident', severity: 'high', label: 'Primary Inundation Point' },
-            { id: 'p2', coordinates: [77.6200, 12.9500], type: 'incident', severity: 'medium', label: 'Secondary Runoff' }
+            { id: 'p1', coordinates: activeDisaster?.sector?.includes('Mumbai') ? [72.8777, 19.0760] : [77.5946, 12.9716], type: 'incident', severity: 'high', label: forecast.targetZone }
           ]}
         />
-        <div className="absolute top-4 left-4 glass p-4 rounded-xl border-white/10 z-10 max-w-xs space-y-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="text-[10px] font-bold uppercase text-primary">Map Prediction View</div>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">The AI model projects critical flooding starting from the eastern basin, expanding west over the next 3 hours.</p>
+        <div className="absolute top-4 left-4 glass p-4 rounded-xl border-white/10 z-10 max-w-xs space-y-2 pointer-events-none transition-all duration-500">
+          <div className="text-[10px] font-black uppercase text-primary tracking-widest">Model Projection Detail</div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground font-medium italic">
+            The {forecast.primaryRisk} vector is projected to intensify along the {forecast.targetZone} basin within the next 120 minutes.
+          </p>
         </div>
       </div>
 
       {/* Bottom: Timeline Cards */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <Clock className="h-3 w-3" />
             6-Hour Predictive Vector
           </h3>
-          {forecastResult && (
-            <Badge className="bg-emerald-500/10 border-emerald-500/20 text-emerald-500 text-[9px] gap-1.5 px-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              AI ESCALATION WARNING ACTIVE
-            </Badge>
-          )}
+          <Badge className="bg-emerald-500/10 border-emerald-500/20 text-emerald-500 text-[9px] gap-1.5 px-3 font-bold">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            NEURAL PROJECTION ACTIVE
+          </Badge>
         </div>
         
         <ScrollArea className="w-full whitespace-nowrap pb-4">
           <div className="flex gap-4">
-            {timeline.map((item: any, i: number) => (
-              <Card key={i} className="glass-card min-w-[240px] hover:bg-white/5 transition-all group border-t-2 border-t-white/5 hover:border-t-primary/50">
-                <CardHeader className="p-4 border-b border-white/5 bg-white/5 flex flex-row items-center justify-between">
-                  <span className="text-sm font-bold text-white font-mono">{item.label}</span>
-                  <Badge variant="outline" className={`text-[8px] h-4 uppercase ${
-                      item.risk === 'Critical' || item.risk === 'High' ? 'bg-destructive/10 text-destructive border-destructive/20' : 
-                      item.risk === 'Warning' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                      'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                    }`}>
-                      {item.risk}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="p-5 space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-[8px] font-bold uppercase text-muted-foreground tracking-widest">Rainfall</span>
-                      <div className="flex items-center gap-2">
-                        <CloudRain className="h-3.5 w-3.5 text-primary" />
-                        <span className="text-sm font-bold font-mono text-white">{item.rainfall}</span>
+            {forecast.hourlyForecast.map((item: any, i: number) => {
+              const isActive = expandedCard === i;
+              return (
+                <Card 
+                  key={i} 
+                  onClick={() => setExpandedCard(i)}
+                  className={`glass-card min-w-[240px] transition-all duration-300 cursor-pointer border-t-2 group ${
+                    isActive ? 'border-t-primary bg-primary/10 shadow-[0_0_30px_rgba(69,175,219,0.1)]' : 'border-t-white/5 hover:border-t-primary/40'
+                  }`}
+                >
+                  <CardHeader className="p-4 border-b border-white/5 bg-white/5 flex flex-row items-center justify-between">
+                    <span className="text-sm font-black text-white font-mono">{item.hour}</span>
+                    <Badge variant="outline" className={`text-[8px] h-4 uppercase font-bold ${getSeverityColor(item.severity)}`}>
+                        {item.severity}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="p-5 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Rainfall</span>
+                        <div className="flex items-center gap-2">
+                          <CloudRain className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-black font-mono text-white">{item.rainfall}mm/h</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Atmosphere</span>
+                        <div className="flex items-center gap-2">
+                          <Thermometer className="h-3.5 w-3.5 text-amber-500" />
+                          <span className="text-xs font-black font-mono text-white">{item.temperature}°C</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <span className="text-[8px] font-bold uppercase text-muted-foreground tracking-widest">Atmosphere</span>
-                      <div className="flex items-center gap-2">
-                        <Thermometer className="h-3.5 w-3.5 text-amber-500" />
-                        <span className="text-sm font-bold font-mono text-white">{item.temp}</span>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Severity Vector</span>
+                        <span className={`text-[10px] font-black font-mono ${item.predictedSeverityPercent > 80 ? 'text-destructive' : 'text-primary'}`}>
+                          {item.predictedSeverityPercent}%
+                        </span>
                       </div>
+                      <Progress value={item.predictedSeverityPercent} className={`h-1 ${item.predictedSeverityPercent > 80 ? '[&>div]:bg-destructive' : ''}`} />
                     </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[8px] font-bold uppercase text-muted-foreground tracking-widest">Predicted Severity</span>
-                      <span className={`text-[10px] font-bold font-mono ${item.severity > 80 ? 'text-destructive' : 'text-primary'}`}>{item.severity}%</span>
-                    </div>
-                    <Progress value={item.severity} className={`h-1.5 ${item.severity > 80 ? '[&>div]:bg-destructive' : ''}`} />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+
+                    {/* Expanded Tactical View */}
+                    {isActive && (
+                      <div className="pt-4 border-t border-white/10 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Wind className="h-3 w-3 text-accent" />
+                            <span className="text-[9px] font-bold uppercase text-muted-foreground">Wind Speed</span>
+                          </div>
+                          <span className="text-[10px] font-mono font-black text-accent">{item.windSpeed || 0} km/h</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Droplets className="h-3 w-3 text-primary" />
+                            <span className="text-[9px] font-bold uppercase text-muted-foreground">Drainage Load</span>
+                          </div>
+                          <span className="text-[10px] font-mono font-black text-primary">{item.drainageLoad || 0}%</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="h-3 w-3 text-destructive" />
+                            <span className="text-[9px] font-bold uppercase text-muted-foreground">Evac Urgency</span>
+                          </div>
+                          <Badge variant="outline" className="text-[8px] border-destructive/20 text-destructive bg-destructive/5 font-black">
+                            {item.evacuationUrgency || 'LOW'}
+                          </Badge>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
       </div>
 
-      {/* Intelligence Expansion */}
-      {forecastResult && (
-        <Card className="glass-card border-t-2 border-t-accent shadow-2xl animate-in fade-in slide-in-from-top-4 duration-1000">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-black uppercase tracking-[0.2em] text-accent flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4" />
-              Strategic Model Detail
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="p-6 bg-accent/5 rounded-xl border border-accent/10 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground font-medium">
-              {forecastResult.summary}
+      {/* Strategic Insights */}
+      <Card className="glass-card border-t-2 border-t-accent shadow-2xl">
+        <CardHeader className="pb-2 border-b border-white/5 bg-white/5">
+          <CardTitle className="text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-2">
+            <Info className="h-4 w-4" />
+            Strategic Forecast Projection
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="p-6 bg-accent/5 rounded-xl border border-accent/10 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground font-medium italic">
+            {forecast.summary}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Protocol Modal */}
+      <Dialog open={isProtocolOpen} onOpenChange={setIsProtocolOpen}>
+        <DialogContent className="glass-card sm:max-w-[450px] border-accent/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase tracking-tighter italic flex items-center gap-3">
+              <ShieldAlert className="h-5 w-5 text-accent" />
+              Emergency Response Protocol
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 space-y-4">
+            <div className="p-4 bg-accent/10 border border-accent/20 rounded-xl">
+              <span className="text-[10px] font-black uppercase text-accent tracking-widest mb-1 block">Primary Objective</span>
+              <p className="text-sm font-bold text-white italic">"{forecast.immediateAction}"</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="space-y-3">
+              {generateProtocols(forecast.immediateAction).map((step, idx) => (
+                <div key={idx} className="flex gap-4 items-center p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center text-[10px] font-black text-accent shrink-0 border border-accent/30">
+                    {idx + 1}
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground">{step}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsProtocolOpen(false)} className="w-full bg-accent hover:bg-accent/90 font-black uppercase tracking-widest h-12">
+              DISMISS PROTOCOL
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
