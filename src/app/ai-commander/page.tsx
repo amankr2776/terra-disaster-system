@@ -16,101 +16,102 @@ import {
   Droplets,
   Utensils,
   PlusCircle,
-  Clock
+  Clock,
+  RefreshCw,
+  Info
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { type CommanderIntelligenceOutput } from "@/ai/flows/commander-intelligence"
+import { database, ref, onValue, push, serverTimestamp } from "@/lib/firebase"
+import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 export default function AICommanderPage() {
-  const [messages, setMessages] = useState([
-    { role: 'system', text: 'Neural Link established. Sector 4 telemetry synced.', time: '08:42:11' },
-    { role: 'ai', text: 'Strategic AI Brain initialized. Monitoring subcontinent risk vectors.', time: '08:43:05' },
-  ])
-  const [input, setInput] = useState("")
-  const [weather, setWeather] = useState<any>(null);
-  const [lastAnalysis, setLastAnalysis] = useState<CommanderIntelligenceOutput | null>(null);
-  const [loadingType, setLoadingType] = useState<string | null>(null);
+  const { toast } = useToast()
+  const [analysis, setAnalysis] = useState<any>(null)
+  const [tacticalFeed, setTacticalFeed] = useState<any[]>([])
+  const [activeReport, setActiveReport] = useState<'report' | 'evacuation' | 'allocation'>('report')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [chatInput, setChatInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     document.title = "TERRA | AI Decision Support";
+
+    // 1. Listen for AI Analysis
+    const analysisRef = ref(database, 'terra/aiAnalysis')
+    const unsubscribeAnalysis = onValue(analysisRef, (snapshot) => {
+      setAnalysis(snapshot.val())
+    })
+
+    // 2. Listen for Tactical Feed
+    const feedRef = ref(database, 'terra/tacticalFeed')
+    const unsubscribeFeed = onValue(feedRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        const feedArray = Object.entries(data).map(([id, val]: [string, any]) => ({
+          id,
+          ...val
+        }))
+        feedArray.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        setTacticalFeed(feedArray)
+      }
+    })
+
+    return () => {
+      unsubscribeAnalysis()
+      unsubscribeFeed()
+    }
+  }, [])
+
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [tacticalFeed, isAnalyzing])
 
-  useEffect(() => {
-    fetch('/api/weather')
-      .then(res => res.json())
-      .then(data => setWeather(data.telemetry));
-  }, []);
+  const runReanalysis = async () => {
+    setIsAnalyzing(true)
+    try {
+      const res = await fetch('/api/ai-analyze', { method: 'POST' })
+      if (!res.ok) throw new Error('Analysis failed')
+      toast({
+        title: "Intelligence Synchronized",
+        description: "Tactical models updated. Feed synced.",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Link Failure",
+        description: "Could not establish connection to neural cluster.",
+      })
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
+    if (!chatInput.trim()) return
     
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    const newMsg = { role: 'user', text: input, time }
-    setMessages(prev => [...prev, newMsg])
-    setInput("")
-
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        role: 'ai', 
-        text: 'Query received. Correlating with tactical data streams...', 
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
-      }])
-    }, 600)
+    const feedRef = ref(database, 'terra/tacticalFeed')
+    push(feedRef, {
+      message: chatInput,
+      source: "user",
+      priority: "INFO",
+      timestamp: new Date().toISOString()
+    })
+    setChatInput("")
   }
 
-  const triggerAIAction = async (type: 'report' | 'allocation' | 'evacuation') => {
-    setLoadingType(type);
-    
-    const weatherContext = weather ? `${weather.rainfall}, ${weather.windSpeed}, ${weather.temperature}` : 'Unknown';
-    const zoneContext = "Mumbai Sector 4 (Critical), Marine Drive (Warning), Kurla (Critical)";
-    const popContext = "842,500 At-Risk, 68% Shelter Capacity";
-
-    try {
-      const response = await fetch('/api/ai-commander', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          context: {
-            weather: weatherContext,
-            activeZones: zoneContext,
-            population: popContext,
-          }
-        }),
-      });
-
-      const result: CommanderIntelligenceOutput = await response.json();
-      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-      setLastAnalysis(result);
-      setMessages(prev => [...prev, {
-        role: 'system',
-        text: `EXECUTING: ${result.title.toUpperCase()}`,
-        time: timestamp
-      }, {
-        role: 'ai',
-        text: result.content,
-        time: timestamp
-      }]);
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, {
-        role: 'system',
-        text: 'ERROR: AI link interruption during tactical generation.',
-        time: new Date().toLocaleTimeString()
-      }]);
-    } finally {
-      setLoadingType(null);
-    }
+  const getTimeAgo = (timestamp: any) => {
+    if (!timestamp) return "Never"
+    const diff = Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000)
+    if (diff < 1) return "Just now"
+    return `${diff}m ago`
   }
 
   return (
@@ -123,14 +124,18 @@ export default function AICommanderPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight uppercase italic">AI Decision Support</h1>
-            <p className="text-muted-foreground">Unified Strategic Command & Neural Resource Projection</p>
+            <p className="text-muted-foreground text-sm font-medium">Neural Resource Projection • Last synced: {getTimeAgo(analysis?.lastUpdated)}</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Badge variant="outline" className="h-9 px-4 glass border-accent/30 text-accent gap-2">
-            <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-            Neural Link: ACTIVE
-          </Badge>
+        <div className="flex gap-3">
+          <Button 
+            onClick={runReanalysis} 
+            disabled={isAnalyzing}
+            className="bg-accent hover:bg-accent/90 shadow-xl shadow-accent/20 h-11 px-8 font-black uppercase tracking-widest text-[10px]"
+          >
+            {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            {isAnalyzing ? "ANALYZING..." : "RE-ANALYZE"}
+          </Button>
         </div>
       </div>
 
@@ -142,44 +147,50 @@ export default function AICommanderPage() {
             <CardHeader className="pb-4">
               <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
                 <Zap className="h-4 w-4 text-primary" />
-                Strategic Protocols
+                Intelligence Protocols
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button 
-                onClick={() => triggerAIAction('report')}
-                disabled={!!loadingType}
-                className="w-full justify-start gap-3 h-12 glass hover:bg-white/10" 
+                onClick={() => setActiveReport('report')}
+                className={cn(
+                  "w-full justify-start gap-3 h-14 glass transition-all",
+                  activeReport === 'report' ? "bg-primary/20 border-primary shadow-[0_0_15px_rgba(69,175,219,0.2)]" : "hover:bg-white/10"
+                )}
                 variant="outline"
               >
-                {loadingType === 'report' ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <FileText className="h-5 w-5 text-primary" />}
+                <FileText className={cn("h-5 w-5", activeReport === 'report' ? "text-primary" : "text-muted-foreground")} />
                 <div className="text-left">
                   <div className="text-xs font-bold uppercase">Situation Report</div>
-                  <div className="text-[10px] text-muted-foreground">Synthesize Tactical Data</div>
+                  <div className="text-[10px] text-muted-foreground uppercase opacity-60 font-black">Neural Summary</div>
                 </div>
               </Button>
               <Button 
-                onClick={() => triggerAIAction('evacuation')}
-                disabled={!!loadingType}
-                className="w-full justify-start gap-3 h-12 glass hover:bg-white/10" 
+                onClick={() => setActiveReport('evacuation')}
+                className={cn(
+                  "w-full justify-start gap-3 h-14 glass transition-all",
+                  activeReport === 'evacuation' ? "bg-destructive/20 border-destructive shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "hover:bg-white/10"
+                )}
                 variant="outline"
               >
-                {loadingType === 'evacuation' ? <Loader2 className="h-5 w-5 animate-spin text-destructive" /> : <Navigation className="h-5 w-5 text-destructive" />}
+                <Navigation className={cn("h-5 w-5", activeReport === 'evacuation' ? "text-destructive" : "text-muted-foreground")} />
                 <div className="text-left">
                   <div className="text-xs font-bold uppercase">Evacuation Plan</div>
-                  <div className="text-[10px] text-muted-foreground">Route & Safety Logic</div>
+                  <div className="text-[10px] text-muted-foreground uppercase opacity-60 font-black">Route Matrix</div>
                 </div>
               </Button>
               <Button 
-                onClick={() => triggerAIAction('allocation')}
-                disabled={!!loadingType}
-                className="w-full justify-start gap-3 h-12 glass hover:bg-white/10" 
+                onClick={() => setActiveReport('allocation')}
+                className={cn(
+                  "w-full justify-start gap-3 h-14 glass transition-all",
+                  activeReport === 'allocation' ? "bg-accent/20 border-accent shadow-[0_0_15px_rgba(125,102,237,0.2)]" : "hover:bg-white/10"
+                )}
                 variant="outline"
               >
-                {loadingType === 'allocation' ? <Loader2 className="h-5 w-5 animate-spin text-accent" /> : <Truck className="h-5 w-5 text-accent" />}
+                <Truck className={cn("h-5 w-5", activeReport === 'allocation' ? "text-accent" : "text-muted-foreground")} />
                 <div className="text-left">
-                  <div className="text-xs font-bold uppercase">Resource Allocation</div>
-                  <div className="text-[10px] text-muted-foreground">Logistical Deployment</div>
+                  <div className="text-xs font-bold uppercase">Resource Logic</div>
+                  <div className="text-[10px] text-muted-foreground uppercase opacity-60 font-black">Logistical Load</div>
                 </div>
               </Button>
             </CardContent>
@@ -189,14 +200,14 @@ export default function AICommanderPage() {
             <CardHeader className="pb-2 border-b border-white/5 bg-white/5">
               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-2">
                 <Clock className="h-3 w-3" />
-                Tactical Timeline
+                Predictive Timeline
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
               <ScrollArea className="h-64">
-                {lastAnalysis?.timelinePrediction ? (
+                {analysis?.timelinePrediction ? (
                   <div className="space-y-6">
-                    {lastAnalysis.timelinePrediction.map((item, idx) => (
+                    {analysis.timelinePrediction.map((item: any, idx: number) => (
                       <div key={idx} className="flex gap-3 items-start relative pb-6 border-l border-white/10 ml-1 pl-4">
                         <div className="absolute left-[-4.5px] top-1 w-2 h-2 rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" />
                         <div>
@@ -209,7 +220,7 @@ export default function AICommanderPage() {
                   </div>
                 ) : (
                   <div className="text-[11px] text-muted-foreground italic text-center py-8">
-                    Initiate Strategic Protocol to generate predictive vector.
+                    Awaiting neural temporal projection...
                   </div>
                 )}
               </ScrollArea>
@@ -217,72 +228,97 @@ export default function AICommanderPage() {
           </Card>
         </div>
 
-        {/* Center Column: Command Log */}
-        <div className="md:col-span-6 flex flex-col min-h-0">
-          <Card className="glass-card flex-1 flex flex-col overflow-hidden border-t-4 border-t-accent shadow-2xl">
+        {/* Center Column: Command Log & Detailed View */}
+        <div className="md:col-span-6 flex flex-col min-h-0 gap-6">
+          {/* Detailed Intelligence View */}
+          <Card className="glass-card border-t-4 border-t-primary shadow-2xl flex-1 flex flex-col">
             <CardHeader className="border-b border-white/5 bg-white/5 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-accent" />
+                <Info className="h-4 w-4 text-primary" />
+                Tactical Detail: {activeReport.toUpperCase()}
+              </CardTitle>
+              <Badge variant="outline" className="text-[10px] font-mono">{analysis?.confidence || 0}% Model confidence</Badge>
+            </CardHeader>
+            <div className="flex-1 p-6 overflow-auto">
+              {analysis ? (
+                <div className="prose prose-invert max-w-none">
+                  <div className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap font-medium bg-white/5 p-6 rounded-xl border border-white/5 italic">
+                    {activeReport === 'report' ? analysis.situationReport :
+                     activeReport === 'evacuation' ? analysis.evacuationPlan :
+                     analysis.resourceAllocation}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8 opacity-40">
+                  <Activity className="h-12 w-12 mb-4 animate-pulse" />
+                  <p className="text-xs font-black uppercase tracking-widest">Awaiting authority data input for neural analysis...</p>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Neural Command Stream */}
+          <Card className="glass-card h-[40%] flex flex-col overflow-hidden border-t-4 border-t-accent">
+            <CardHeader className="border-b border-white/5 bg-white/5 py-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                <Terminal className="h-3 w-3 text-accent" />
                 Neural Command Stream
               </CardTitle>
-              <Badge variant="outline" className="text-[10px] bg-accent/10 border-accent/20 text-accent font-mono">LINK-X44-SYNCED</Badge>
             </CardHeader>
-            
             <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-              <div className="space-y-4">
-                {messages.map((msg, i) => (
-                  <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[9px] font-mono text-muted-foreground">{msg.time}</span>
-                      <span className={`text-[9px] font-black uppercase tracking-tighter ${msg.role === 'ai' ? 'text-accent' : msg.role === 'system' ? 'text-primary' : 'text-white'}`}>
-                        [{msg.role}]
+              <div className="space-y-3">
+                {tacticalFeed.map((msg, i) => (
+                  <div key={i} className={`flex flex-col ${msg.source === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[8px] font-mono text-muted-foreground">
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className={cn(
+                        "text-[8px] font-black uppercase tracking-tighter",
+                        msg.source === 'ai' ? 'text-accent' : msg.source === 'user' ? 'text-white' : 'text-primary'
+                      )}>
+                        [{msg.source}]
                       </span>
                     </div>
-                    <div className={`max-w-[90%] p-4 rounded-xl text-sm leading-relaxed ${
-                      msg.role === 'user' 
+                    <div className={cn(
+                      "max-w-[85%] p-3 rounded-xl text-[11px] leading-tight shadow-lg",
+                      msg.source === 'user' 
                         ? 'bg-primary/20 border border-primary/30 text-white rounded-tr-none' 
-                        : msg.role === 'system'
-                        ? 'bg-white/5 border border-white/5 font-mono text-[11px] text-primary italic'
-                        : 'bg-accent/10 border border-accent/20 text-accent-foreground rounded-tl-none whitespace-pre-wrap font-medium shadow-inner'
-                    }`}>
-                      {msg.text}
+                        : msg.source === 'ai'
+                        ? 'bg-accent/10 border border-accent/20 text-accent rounded-tl-none italic'
+                        : 'bg-white/5 border border-white/5 text-muted-foreground rounded-tl-none'
+                    )}>
+                      {msg.message}
                     </div>
                   </div>
                 ))}
-                {loadingType && (
+                {isAnalyzing && (
                   <div className="flex flex-col items-start">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[9px] font-mono text-muted-foreground">---</span>
-                      <span className="text-[9px] font-black uppercase text-accent animate-pulse">
-                        [PROCESSING]
-                      </span>
-                    </div>
-                    <div className="bg-accent/5 border border-accent/10 p-4 rounded-xl rounded-tl-none flex items-center gap-3">
-                      <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                      <span className="text-xs text-muted-foreground italic font-mono tracking-widest">Accessing high-fidelity neural clusters...</span>
+                    <div className="bg-accent/5 border border-accent/10 p-3 rounded-xl rounded-tl-none flex items-center gap-3">
+                      <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                      <span className="text-[10px] text-muted-foreground italic font-mono tracking-widest">Accessing tactical clusters...</span>
                     </div>
                   </div>
                 )}
               </div>
             </ScrollArea>
-
-            <div className="p-4 border-t border-white/5 bg-black/20">
+            <div className="p-3 border-t border-white/5 bg-black/20">
               <form onSubmit={handleSendMessage} className="flex gap-2">
                 <Input 
-                  placeholder="Request specific sector analysis or issue override..." 
-                  className="bg-white/5 border-white/10 h-10 font-mono text-xs focus:ring-accent"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Neural Link Input..." 
+                  className="bg-white/5 border-white/10 h-8 font-mono text-[10px] focus:ring-accent"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
                 />
-                <Button type="submit" size="icon" className="bg-accent hover:bg-accent/90 shrink-0 shadow-lg shadow-accent/20">
-                  <Send className="h-4 w-4" />
+                <Button type="submit" size="icon" className="h-8 w-8 bg-accent hover:bg-accent/90 shrink-0">
+                  <Send className="h-3 w-3" />
                 </Button>
               </form>
             </div>
           </Card>
         </div>
 
-        {/* Right Column: Impact Analysis */}
+        {/* Right Column: Impact Vector Analysis */}
         <div className="md:col-span-3 space-y-6 overflow-y-auto pr-1">
           <Card className="glass-card border-t-2 border-t-white/10 shadow-xl">
             <CardHeader className="pb-3 bg-white/5 border-b border-white/5">
@@ -294,81 +330,60 @@ export default function AICommanderPage() {
             <CardContent className="space-y-6 pt-6">
               <div className="text-center p-6 bg-white/5 rounded-2xl border border-white/5 shadow-inner">
                 <div className="text-4xl font-black text-white tracking-tighter">
-                  {lastAnalysis?.impactAnalysis?.affectedPopulation.toLocaleString() || "---"}
+                  {analysis?.impactAnalysis?.affectedPopulation?.toLocaleString() || "---"}
                 </div>
                 <div className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mt-1 opacity-60">At-Risk Citizens</div>
               </div>
               
               <div className="space-y-4">
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                   <div className="flex items-center gap-3">
                     <Droplets className="h-4 w-4 text-primary" />
                     <span className="text-[11px] font-bold uppercase tracking-tight">Water req.</span>
                   </div>
                   <span className="font-mono font-black text-xs text-primary">
-                    {lastAnalysis?.impactAnalysis ? `${lastAnalysis.impactAnalysis.waterRequired.toLocaleString()} L` : "---"}
+                    {analysis?.impactAnalysis ? `${analysis.impactAnalysis.waterRequired.toLocaleString()} L` : "---"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                   <div className="flex items-center gap-3">
                     <Utensils className="h-4 w-4 text-amber-500" />
                     <span className="text-[11px] font-bold uppercase tracking-tight">Food req.</span>
                   </div>
                   <span className="font-mono font-black text-xs text-amber-500">
-                    {lastAnalysis?.impactAnalysis ? `${lastAnalysis.impactAnalysis.foodRequired.toLocaleString()} KG` : "---"}
+                    {analysis?.impactAnalysis ? `${analysis.impactAnalysis.foodRequired.toLocaleString()} KG` : "---"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                   <div className="flex items-center gap-3">
                     <PlusCircle className="h-4 w-4 text-emerald-500" />
                     <span className="text-[11px] font-bold uppercase tracking-tight">Medical</span>
                   </div>
                   <span className="font-mono font-black text-xs text-emerald-500">
-                    {lastAnalysis?.impactAnalysis ? `${lastAnalysis.impactAnalysis.medicalResources.toLocaleString()} u` : "---"}
+                    {analysis?.impactAnalysis ? `${analysis.impactAnalysis.medicalResources.toLocaleString()} u` : "---"}
                   </span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="glass-card">
-            <CardHeader className="pb-3 border-b border-white/5 bg-white/5">
-              <CardTitle className="text-[10px] font-black uppercase tracking-widest text-destructive flex items-center gap-2">
-                <Navigation className="h-3 w-3" />
-                Priority Corridors
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-4">
-              {lastAnalysis?.evacuationRoutes ? (
-                lastAnalysis.evacuationRoutes.map((route, i) => (
-                  <div key={i} className="p-3 bg-destructive/5 border border-destructive/20 rounded-xl flex items-center gap-3 hover:bg-destructive/10 transition-colors">
-                    <Navigation className="h-3.5 w-3.5 text-destructive" />
-                    <span className="text-[10px] font-black uppercase italic tracking-tighter text-destructive-foreground">{route}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="text-[10px] text-muted-foreground italic text-center py-4">Awaiting tactical route generation...</div>
-              )}
-            </CardContent>
-          </Card>
-
           <Card className="glass-card bg-accent/5">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 border-b border-white/5">
               <CardTitle className="text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-2">
-                <Activity className="h-3 w-3" />
+                <ShieldAlert className="h-3 w-3" />
                 Neural Integrity
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-mono">
                   <span className="uppercase font-bold">Fidelity</span>
-                  <span className="text-accent font-black">98.2%</span>
+                  <span className="text-accent font-black">{analysis?.confidence || 0}%</span>
                 </div>
-                <Progress value={98.2} className="h-1 bg-white/5" />
+                <Progress value={analysis?.confidence || 0} className="h-1 bg-white/5" />
               </div>
               <p className="text-[9px] leading-relaxed text-muted-foreground italic font-medium">
-                AI Brain is processing high-bandwidth telemetry from Mumbai coastal sensor nodes.
+                AI cluster is processing high-bandwidth telemetry from global tactical sensor nodes.
               </p>
             </CardContent>
           </Card>

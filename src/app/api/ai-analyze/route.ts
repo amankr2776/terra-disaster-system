@@ -47,6 +47,15 @@ export async function POST() {
       "situationReport": "3-4 sentence tactical summary",
       "evacuationPlan": "step by step evacuation instructions",
       "resourceAllocation": "water/food/medical/personnel breakdown",
+      "impactAnalysis": {
+        "affectedPopulation": number,
+        "waterRequired": number,
+        "foodRequired": number,
+        "medicalResources": number
+      },
+      "timelinePrediction": [
+        {"time": "T+Xh", "event": "Occurrence", "riskLevel": "Severity"}
+      ],
       "aiNotification": "one urgent alert message for the tactical feed",
       "aiNotificationPriority": "CRITICAL|WARNING|INFO",
       "confidence": 94.2
