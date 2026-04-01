@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { Maximize2, Layers as LayersIcon, Box } from 'lucide-react'
+import { Maximize2, Box } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface TerraMapProps {
@@ -30,14 +30,6 @@ const STATIC_FLOOD_ZONES = {
         type: 'Polygon',
         coordinates: [[[80.245, 13.000], [80.270, 13.000], [80.270, 13.015], [80.245, 13.015], [80.245, 13.000]]]
       }
-    },
-    {
-      type: 'Feature',
-      properties: { name: 'Velachery', severity: 'high', risk: '95%', color: '#ef4444' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[[80.210, 12.970], [80.235, 12.970], [80.235, 12.990], [80.210, 12.990], [80.210, 12.970]]]
-      }
     }
   ]
 }
@@ -50,7 +42,6 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // 1. Initialize the map
   useEffect(() => {
-    // FIX 5: Ensure container exists before initialization
     if (!mapContainer.current || map.current) return
 
     const mapInstance = new maplibregl.Map({
@@ -65,10 +56,8 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
     map.current = mapInstance
 
-    // FIX 1: Wrap every map modification inside the 'load' callback
     mapInstance.on('load', () => {
-      // FIX 2: Null check before access
-      if (!mapInstance || mapInstance.isStyleLoaded() === false) return
+      if (!mapInstance || !mapInstance.getCanvas()) return
 
       try {
         if (enable3D) {
@@ -134,7 +123,6 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       }
     })
 
-    // FIX 3: Cleanup function destroys the map properly
     return () => {
       if (map.current) {
         map.current.remove()
@@ -142,27 +130,24 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       }
       setIsLoaded(false)
     }
-  }, []) // Run once on mount
+  }, [])
 
   // 2. Handle center and zoom changes
   useEffect(() => {
-    // FIX 2: Null check before every map access
     if (!map.current || !isLoaded) return
-
     try {
       map.current.easeTo({ center, zoom, duration: 1000 })
     } catch (e) {
-      console.warn("Failed to ease to new position", e)
+      console.warn("Failed to ease map", e)
     }
   }, [center, zoom, isLoaded])
 
-  // 4. Handle dynamic overlay changes
+  // 3. Handle dynamic overlay changes
   useEffect(() => {
-    // FIX 2: Null check and FIX 4: Check if loaded
     if (!map.current || !isLoaded) return
     
     const updateOverlay = () => {
-      if (!map.current) return
+      if (!map.current || !map.current.getCanvas()) return
       try {
         const source = map.current.getSource('simulation-source') as maplibregl.GeoJSONSource
         if (source) {
@@ -173,27 +158,25 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       }
     }
 
-    if (map.current.loaded()) {
+    if (map.current.isStyleLoaded()) {
       updateOverlay()
     } else {
       map.current.once('idle', updateOverlay)
     }
   }, [disasterOverlay, isLoaded])
 
-  // Handle markers updates
+  // 4. Handle markers updates
   useEffect(() => {
-    // FIX 2: Null check and FIX 4: Check if loaded
     if (!map.current || !isLoaded) return
 
     const currentMap = map.current
 
-    // Clear existing markers
+    // Clear existing markers immediately
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
 
     const addMarkers = () => {
-      // FIX 2: Null check inside nested callback
-      if (!currentMap || !currentMap.getCanvas()) return
+      if (!currentMap || !currentMap.getCanvas() || !currentMap.isStyleLoaded()) return
 
       markers.forEach(markerData => {
         const el = document.createElement('div')
@@ -208,8 +191,8 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
         el.style.boxShadow = `0 0 15px ${color}`
         
         try {
-          // Double check the map is still valid before adding
-          if (currentMap.getCanvas()) {
+          // Re-verify map validity before adding to prevent 'projection' error
+          if (currentMap && currentMap.getCanvas()) {
             const marker = new maplibregl.Marker(el)
               .setLngLat(markerData.coordinates)
               .setPopup(new maplibregl.Popup({ offset: 25, closeButton: false }).setHTML(
@@ -222,12 +205,12 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
             markersRef.current.push(marker)
           }
         } catch (e) {
-          console.warn("Failed to add marker to map", e)
+          console.warn("Marker creation error suppressed:", e)
         }
       })
     }
 
-    if (currentMap.loaded()) {
+    if (currentMap.isStyleLoaded()) {
       addMarkers()
     } else {
       currentMap.once('idle', addMarkers)
