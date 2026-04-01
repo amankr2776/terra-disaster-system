@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useState, useEffect } from "react"
 import { 
   LayoutDashboard, 
   ShieldAlert, 
@@ -37,6 +38,48 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname()
+  const [health, setHealth] = useState(92)
+
+  useEffect(() => {
+    const calculateHealth = async () => {
+      let scores = [];
+      
+      // 1. Weather API check
+      try {
+        const res = await fetch('/api/weather');
+        scores.push(res.ok ? 100 : 0);
+      } catch {
+        scores.push(0);
+      }
+
+      // 2. AI Commander API check (using a quick ping/metadata check if possible, or just res ok)
+      try {
+        const res = await fetch('/api/forecast');
+        scores.push(res.ok ? 100 : 0);
+      } catch {
+        scores.push(0);
+      }
+
+      // 3. Geolocation check
+      if ("geolocation" in navigator) {
+        try {
+          const permission = await navigator.permissions.query({ name: 'geolocation' });
+          scores.push(permission.state === 'granted' || permission.state === 'prompt' ? 100 : 0);
+        } catch {
+          scores.push(100); // Default to working if API check fails
+        }
+      } else {
+        scores.push(0);
+      }
+
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      setHealth(Math.round(avg));
+    };
+
+    calculateHealth();
+    const interval = setInterval(calculateHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-white/10 bg-sidebar">
@@ -97,8 +140,8 @@ export function SidebarNav() {
                   className={cn(
                     "h-11 px-4 transition-all group",
                     pathname === "/citizen"
-                      ? "bg-accent text-white"
-                      : "text-muted-foreground hover:bg-white/5"
+                      ? "bg-accent text-white shadow-lg shadow-accent/20 hover:bg-accent/90 hover:text-white"
+                      : "text-muted-foreground hover:bg-white/5 hover:text-white"
                   )}
                 >
                   <Link href="/citizen">
@@ -114,12 +157,15 @@ export function SidebarNav() {
 
       <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
         <div className="p-4 rounded-xl bg-accent/10 border border-accent/20">
-          <p className="text-[11px] text-accent font-bold uppercase tracking-wider mb-1">System Health</p>
+          <p className="text-[11px] text-accent font-bold uppercase tracking-wider mb-1">System Integrity</p>
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-accent/20 rounded-full overflow-hidden">
-              <div className="w-[92%] h-full bg-accent" />
+              <div 
+                className="h-full bg-accent transition-all duration-1000" 
+                style={{ width: `${health}%` }} 
+              />
             </div>
-            <span className="text-[10px] text-accent font-medium">92%</span>
+            <span className="text-[10px] text-accent font-black">{health}%</span>
           </div>
         </div>
       </SidebarFooter>

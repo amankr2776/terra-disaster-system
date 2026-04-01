@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -45,6 +44,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    document.title = "TERRA | Command Center";
     fetchWeather();
     const interval = setInterval(fetchWeather, 60000);
     return () => clearInterval(interval);

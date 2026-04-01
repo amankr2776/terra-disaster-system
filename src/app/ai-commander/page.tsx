@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useRef, useEffect } from "react"
@@ -38,6 +37,7 @@ export default function AICommanderPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    document.title = "TERRA | AI Decision Support";
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }

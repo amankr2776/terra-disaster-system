@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -42,6 +41,7 @@ export default function SimulationPage() {
   }
 
   useEffect(() => {
+    document.title = "TERRA | Live Simulation";
     setSelectedZone(cityZones[selectedCity][0])
   }, [selectedCity])
 

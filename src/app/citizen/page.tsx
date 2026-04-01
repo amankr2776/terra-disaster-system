@@ -46,6 +46,7 @@ export default function CitizenPortalPage() {
   const [locationInput, setLocationInput] = useState("")
 
   useEffect(() => {
+    document.title = "TERRA | Citizen Protection";
     const savedLocation = localStorage.getItem('terra_user_location')
     if (savedLocation) {
       setUserLocation(savedLocation)

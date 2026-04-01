@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -8,12 +7,24 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 
 export function Header() {
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [isInitialSync, setIsInitialSync] = useState(true);
+  
+  const [commanderName, setCommanderName] = useState<string>("Commander");
+  const [isNameDialogOpen, setIsNameDialogOpen] = useState(false);
+  const [newNameInput, setNewNameInput] = useState("");
 
   const fetchWeather = async () => {
     setLoading(true);
@@ -38,7 +49,14 @@ export function Header() {
   useEffect(() => {
     fetchWeather();
     
-    // UX forced delay for sync transition as requested
+    // Check for commander name
+    const savedName = localStorage.getItem('terra_commander_name');
+    if (savedName) {
+      setCommanderName(savedName);
+    } else {
+      setIsNameDialogOpen(true);
+    }
+
     const timer = setTimeout(() => {
       setIsInitialSync(false);
     }, 2000);
@@ -50,6 +68,14 @@ export function Header() {
     };
   }, []);
 
+  const handleSaveName = () => {
+    if (newNameInput.trim()) {
+      localStorage.setItem('terra_commander_name', newNameInput.trim());
+      setCommanderName(newNameInput.trim());
+      setIsNameDialogOpen(false);
+    }
+  };
+
   const displayVal = (val: string | undefined) => {
     if (loading && !weather) return "---";
     if (error || !val || val === "N/A") return "N/A";
@@ -60,7 +86,7 @@ export function Header() {
     <header className="h-16 border-b border-white/10 bg-background/40 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-300">
       {/* Left: Branding & Status */}
       <div className="flex items-center gap-4">
-        <SidebarTrigger className="md:hidden hover:bg-white/10" />
+        <SidebarTrigger className="hover:bg-white/10" />
         <div className="flex items-center gap-2 mr-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(69,175,219,0.2)]">
             <Layers className="text-white h-5 w-5" />
@@ -123,16 +149,43 @@ export function Header() {
         
         <Separator orientation="vertical" className="h-8 bg-white/10 mx-1" />
         
-        <div className="flex items-center gap-3 pl-2 cursor-pointer group">
+        <div className="flex items-center gap-3 pl-2 cursor-pointer group" onClick={() => setIsNameDialogOpen(true)}>
           <div className="flex flex-col items-end hidden sm:flex">
-            <span className="text-xs font-bold leading-none group-hover:text-primary transition-colors">Commander Sarah</span>
-            <span className="text-[10px] text-muted-foreground font-mono">ID: X-4410</span>
+            <span className="text-xs font-bold leading-none group-hover:text-primary transition-colors">{commanderName}</span>
+            <span className="text-[10px] text-muted-foreground font-mono">ID: X-PROX</span>
           </div>
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center border border-white/10 group-hover:border-primary/40 transition-all overflow-hidden">
              <User className="h-5 w-5 text-primary" />
           </div>
         </div>
       </div>
+
+      {/* Commander Registration Dialog */}
+      <Dialog open={isNameDialogOpen} onOpenChange={setIsNameDialogOpen}>
+        <DialogContent className="glass-card sm:max-w-[425px] border-primary/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase tracking-tighter italic">Register Commander</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tactical Callsign</label>
+              <Input
+                id="name"
+                value={newNameInput}
+                onChange={(e) => setNewNameInput(e.target.value)}
+                placeholder="Enter callsign..."
+                className="bg-white/5 border-white/10 h-12 font-bold"
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveName} className="w-full bg-primary hover:bg-primary/90 font-black uppercase tracking-widest h-12">
+              Sync Profile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   )
 }
