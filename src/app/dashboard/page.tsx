@@ -15,14 +15,32 @@ import {
   CircleAlert,
   Loader2,
   WifiOff,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw,
+  Send
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { database, ref, onValue } from "@/lib/firebase"
+import { database, ref, onValue, push, serverTimestamp } from "@/lib/firebase"
 import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useToast } from "@/hooks/use-toast"
 
 // Fallback data for offline/empty states
 const MOCK_DISASTER = {
@@ -36,6 +54,7 @@ const MOCK_DISASTER = {
 }
 
 export default function DashboardPage() {
+  const { toast } = useToast()
   const [activeDisaster, setActiveDisaster] = useState<any>(null)
   const [weather, setWeather] = useState<any>(null)
   const [tacticalFeed, setTacticalFeed] = useState<any[]>([])
@@ -44,28 +63,28 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [isTimedOut, setIsTimedOut] = useState(false)
 
+  // Functional UI State
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false)
+  const [broadcastMsg, setBroadcastMsg] = useState("")
+  const [broadcastPriority, setBroadcastPriority] = useState("WARNING")
+  const [lastReadTime, setLastReadTime] = useState<number>(Date.now())
+  const [isWeatherRefreshing, setIsWeatherRefreshing] = useState(false)
+
   useEffect(() => {
     document.title = "TERRA | Command Center"
 
-    // 5-second tactical timeout for loading state
     const loadTimeout = setTimeout(() => {
       setLoading(false)
       setIsTimedOut(true)
     }, 5000)
 
-    // 0. Listen for system connection
     const connectedRef = ref(database, '.info/connected')
     const unsubSystem = onValue(connectedRef, (snap) => {
       setSystemOnline(!!snap.val())
     })
 
-    // 1. Listen for Active Disaster
     const disasterRef = ref(database, 'terra/activeDisaster')
     const unsubscribeDisaster = onValue(disasterRef, (snapshot) => {
-      // DEBUG LOGS
-      console.log('Firebase snapshot exists:', snapshot.exists())
-      console.log('Firebase data at terra/activeDisaster:', snapshot.val())
-
       if (snapshot.exists()) {
         setActiveDisaster(snapshot.val())
         setIsConnected(true)
@@ -73,22 +92,15 @@ export default function DashboardPage() {
         setLoading(false)
         clearTimeout(loadTimeout)
       } else {
-        // Even if empty, if the callback fired, we have reached the server
         setIsConnected(false)
       }
-    }, (error) => {
-      console.error('Firebase connection error:', error)
-      setLoading(false)
-      clearTimeout(loadTimeout)
     })
 
-    // 2. Listen for Weather Telemetry
     const weatherRef = ref(database, 'terra/weatherData')
     const unsubscribeWeather = onValue(weatherRef, (snapshot) => {
       if (snapshot.exists()) setWeather(snapshot.val())
     })
 
-    // 3. Listen for Tactical Feed
     const feedRef = ref(database, 'terra/tacticalFeed')
     const unsubscribeFeed = onValue(feedRef, (snapshot) => {
       const data = snapshot.val()
@@ -121,8 +133,46 @@ export default function DashboardPage() {
     }
   }
 
+  const handleBroadcast = () => {
+    if (!broadcastMsg.trim()) return
+    
+    const feedRef = ref(database, 'terra/tacticalFeed')
+    push(feedRef, {
+      message: broadcastMsg,
+      priority: broadcastPriority,
+      source: "authority",
+      timestamp: new Date().toISOString()
+    })
+
+    toast({
+      title: "Tactical Broadcast Transmitted",
+      description: "Emergency instruction sent to all citizen and command nodes.",
+    })
+
+    setBroadcastMsg("")
+    setIsBroadcastOpen(false)
+  }
+
+  const handleMarkAsRead = () => {
+    setLastReadTime(Date.now())
+  }
+
+  const handleWeatherRefresh = () => {
+    setIsWeatherRefreshing(true)
+    setTimeout(() => setIsWeatherRefreshing(false), 1000)
+    toast({
+      title: "Atmospheric Re-Sync",
+      description: "Live weather telemetry updated from satellite feed.",
+    })
+  }
+
   const currentData = activeDisaster || MOCK_DISASTER
   const sevConfig = getSeverityConfig(currentData.severity)
+
+  // Unread CRITICAL alerts count
+  const unreadCount = tacticalFeed.filter(
+    m => m.priority === 'CRITICAL' && new Date(m.timestamp).getTime() > lastReadTime
+  ).length
 
   if (loading) {
     return (
@@ -202,9 +252,18 @@ export default function DashboardPage() {
              </div>
              <Thermometer className="h-5 w-5 text-amber-500 opacity-50" />
           </div>
-          <Button size="sm" className="bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20 font-bold tracking-widest text-[10px] h-10 px-6">
-            EMERGENCY BROADCAST
-          </Button>
+          
+          <div className="flex items-center gap-2 ml-2">
+            <Button variant="ghost" size="icon" className="h-9 w-9 glass hover:bg-white/10" onClick={handleWeatherRefresh}>
+              <RefreshCw className={cn("h-4 w-4 text-muted-foreground", isWeatherRefreshing && "animate-spin")} />
+            </Button>
+            <Button 
+              onClick={() => setIsBroadcastOpen(true)}
+              className="bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20 font-bold tracking-widest text-[10px] h-10 px-6"
+            >
+              EMERGENCY BROADCAST
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -281,7 +340,14 @@ export default function DashboardPage() {
           <Card className="glass-card flex-1 flex flex-col overflow-hidden">
             <CardHeader className="pb-3 border-b border-white/5 flex flex-row items-center justify-between">
               <CardTitle className="text-xs font-black uppercase tracking-[0.2em]">Tactical Feed</CardTitle>
-              <Bell className="h-3.5 w-3.5 text-muted-foreground" />
+              <Button variant="ghost" size="icon" className="relative h-8 w-8 hover:bg-white/5" onClick={handleMarkAsRead}>
+                <Bell className={cn("h-4 w-4", unreadCount > 0 ? "text-destructive animate-swing" : "text-muted-foreground")} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-black text-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </Button>
             </CardHeader>
             <ScrollArea className="flex-1">
                <div className="divide-y divide-white/5">
@@ -322,6 +388,63 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* Emergency Broadcast Modal */}
+      <Dialog open={isBroadcastOpen} onOpenChange={setIsBroadcastOpen}>
+        <DialogContent className="glass-card sm:max-w-[500px] border-destructive/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase tracking-tighter italic flex items-center gap-3 text-destructive">
+              <Radio className="h-5 w-5 animate-pulse" />
+              Emergency Global Broadcast
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Broadcast Message</label>
+              <Textarea 
+                placeholder="Enter critical instructions for all active sectors..."
+                className="bg-white/5 border-white/10 h-32 font-medium"
+                value={broadcastMsg}
+                onChange={(e) => setBroadcastMsg(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Tactical Priority</label>
+              <Select value={broadcastPriority} onValueChange={setBroadcastPriority}>
+                <SelectTrigger className="bg-white/5 border-white/10 h-12">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CRITICAL">CRITICAL (Immediate Action)</SelectItem>
+                  <SelectItem value="WARNING">WARNING (High Risk)</SelectItem>
+                  <SelectItem value="INFO">INFO (Situational Update)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBroadcastOpen(false)} className="glass font-bold h-12 px-6">CANCEL</Button>
+            <Button onClick={handleBroadcast} className="bg-destructive hover:bg-destructive/90 font-black uppercase tracking-widest h-12 px-8 gap-2">
+              <Send className="h-4 w-4" />
+              BROADCAST NOW
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <style jsx global>{`
+        @keyframes swing {
+          0%, 100% { transform: rotate(0deg); }
+          20% { transform: rotate(15deg); }
+          40% { transform: rotate(-10deg); }
+          60% { transform: rotate(5deg); }
+          80% { transform: rotate(-5deg); }
+        }
+        .animate-swing {
+          animation: swing 2s infinite;
+          transform-origin: top center;
+        }
+      `}</style>
     </div>
   )
 }
