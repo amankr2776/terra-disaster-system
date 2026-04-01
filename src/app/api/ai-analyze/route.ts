@@ -6,8 +6,10 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const { type } = await req.json();
+
     // 1. Fetch Tactical Data from Firebase
     const [disasterSnap, weatherSnap, feedSnap] = await Promise.all([
       get(ref(database, 'terra/activeDisaster')),
@@ -25,7 +27,7 @@ export async function POST() {
       .join('\n');
 
     // 2. Build Tactical Prompt
-    const systemPrompt = "You are TERRA's AI disaster intelligence engine. Analyze incoming real-time disaster data and produce structured tactical outputs for emergency commanders.";
+    const systemPrompt = "You are TERRA's AI strategic commander. Analyze incoming disaster telemetry and produce structured tactical outputs. Be professional, concise, and clinical.";
     
     const userPrompt = `
     LIVE DISASTER DATA:
@@ -33,20 +35,17 @@ export async function POST() {
     Location: ${disaster.sector || 'N/A'}
     Affected Population: ${disaster.affectedPopulation || 0}
     Evacuation Progress: ${disaster.evacuationPercent || 0}%
-    Infrastructure Capacity: ${disaster.drainageCapacity || 0}%
-    Time to Critical: ${disaster.minutesToInundation || 'Unknown'} min
     
     WEATHER:
     Rainfall: ${weather.rainfall || 0}mm/hr | Wind: ${weather.windSpeed || 0}km/h | Temp: ${weather.temperature || 0}°C
     
-    RECENT AUTHORITY NOTIFICATIONS:
-    ${feedMessages || 'No recent notifications.'}
+    REQUEST TYPE: ${type.toUpperCase()}
     
-    Generate a JSON response ONLY (no markdown, no extra text) with:
+    Generate a JSON response ONLY with:
     {
-      "situationReport": "3-4 sentence tactical summary",
-      "evacuationPlan": "step by step evacuation instructions",
-      "resourceAllocation": "water/food/medical/personnel breakdown",
+      "situationReport": "3-4 sentence summary of threat level and priorities",
+      "evacuationPlan": "Step-by-step evacuation protocol for this sector",
+      "resourceAllocation": "Specific breakdown of water, food, medical kits, and personnel needs",
       "impactAnalysis": {
         "affectedPopulation": number,
         "waterRequired": number,
@@ -54,9 +53,9 @@ export async function POST() {
         "medicalResources": number
       },
       "timelinePrediction": [
-        {"time": "T+Xh", "event": "Occurrence", "riskLevel": "Severity"}
+        {"time": "T+1h", "event": "Event name", "riskLevel": "Level"}
       ],
-      "aiNotification": "one urgent alert message for the tactical feed",
+      "aiNotification": "A single urgent notification for the tactical feed",
       "aiNotificationPriority": "CRITICAL|WARNING|INFO",
       "confidence": 94.2
     }`;
@@ -77,24 +76,29 @@ export async function POST() {
     const analysisRef = ref(database, 'terra/aiAnalysis');
     const feedRef = ref(database, 'terra/tacticalFeed');
 
+    // Merge new analysis with existing data to prevent data loss
+    const currentAnalysisSnap = await get(analysisRef);
+    const currentAnalysis = currentAnalysisSnap.val() || {};
+
+    const updatedAnalysis = {
+      ...currentAnalysis,
+      ...aiResult,
+      lastUpdated: serverTimestamp()
+    };
+
     await Promise.all([
-      // Save full analysis
-      set(analysisRef, {
-        ...aiResult,
-        lastUpdated: serverTimestamp()
-      }),
-      // Push AI notification to feed
+      set(analysisRef, updatedAnalysis),
       push(feedRef, {
-        message: aiResult.aiNotification || "AI intelligence updated.",
+        message: aiResult.aiNotification || `AI Intelligence Sync: ${type.toUpperCase()} updated.`,
         priority: aiResult.aiNotificationPriority || "INFO",
         timestamp: new Date().toISOString(),
         source: "ai"
       })
     ]);
 
-    return NextResponse.json({ success: true, analysis: aiResult });
-  } catch (error) {
+    return NextResponse.json({ success: true, analysis: updatedAnalysis });
+  } catch (error: any) {
     console.error('AI Analysis Pipeline Error:', error);
-    return NextResponse.json({ error: "Intelligence sync failed" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Intelligence sync failed" }, { status: 500 });
   }
 }

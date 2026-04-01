@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { database, ref, onValue, push, serverTimestamp } from "@/lib/firebase"
+import { database, ref, onValue, push } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
@@ -35,19 +35,18 @@ export default function AICommanderPage() {
   const [tacticalFeed, setTacticalFeed] = useState<any[]>([])
   const [activeReport, setActiveReport] = useState<'report' | 'evacuation' | 'allocation'>('report')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [loadingProtocol, setLoadingProtocol] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     document.title = "TERRA | AI Decision Support";
 
-    // 1. Listen for AI Analysis
     const analysisRef = ref(database, 'terra/aiAnalysis')
     const unsubscribeAnalysis = onValue(analysisRef, (snapshot) => {
       setAnalysis(snapshot.val())
     })
 
-    // 2. Listen for Tactical Feed
     const feedRef = ref(database, 'terra/tacticalFeed')
     const unsubscribeFeed = onValue(feedRef, (snapshot) => {
       const data = snapshot.val()
@@ -69,27 +68,38 @@ export default function AICommanderPage() {
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
     }
   }, [tacticalFeed, isAnalyzing])
 
-  const runReanalysis = async () => {
+  const runReanalysis = async (type: string = 'full') => {
+    setLoadingProtocol(type)
     setIsAnalyzing(true)
     try {
-      const res = await fetch('/api/ai-analyze', { method: 'POST' })
-      if (!res.ok) throw new Error('Analysis failed')
+      const res = await fetch('/api/ai-analyze', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type })
+      })
+      
+      if (!res.ok) throw new Error('Neural analysis failed')
+      
       toast({
         title: "Intelligence Synchronized",
-        description: "Tactical models updated. Feed synced.",
+        description: `${type.toUpperCase()} intelligence matrix updated.`,
       })
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Link Failure",
-        description: "Could not establish connection to neural cluster.",
+        title: "Neural Link Failure",
+        description: "Could not establish high-bandwidth connection to AI clusters.",
       })
     } finally {
       setIsAnalyzing(false)
+      setLoadingProtocol(null)
     }
   }
 
@@ -116,7 +126,6 @@ export default function AICommanderPage() {
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/20 rounded-lg border border-primary/30">
@@ -124,24 +133,23 @@ export default function AICommanderPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight uppercase italic">AI Decision Support</h1>
-            <p className="text-muted-foreground text-sm font-medium">Neural Resource Projection • Last synced: {getTimeAgo(analysis?.lastUpdated)}</p>
+            <p className="text-muted-foreground text-sm font-medium">Last analyzed: {getTimeAgo(analysis?.lastUpdated)}</p>
           </div>
         </div>
         <div className="flex gap-3">
           <Button 
-            onClick={runReanalysis} 
+            onClick={() => runReanalysis('full')} 
             disabled={isAnalyzing}
             className="bg-accent hover:bg-accent/90 shadow-xl shadow-accent/20 h-11 px-8 font-black uppercase tracking-widest text-[10px]"
           >
-            {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            {isAnalyzing ? "ANALYZING..." : "RE-ANALYZE"}
+            {isAnalyzing && loadingProtocol === 'full' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            {isAnalyzing && loadingProtocol === 'full' ? "ANALYZING..." : "RE-ANALYZE ALL"}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 flex-1 min-h-0">
         
-        {/* Left Column: Command Controls */}
         <div className="md:col-span-3 space-y-6">
           <Card className="glass-card border-l-4 border-l-primary">
             <CardHeader className="pb-4">
@@ -152,42 +160,45 @@ export default function AICommanderPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Button 
-                onClick={() => setActiveReport('report')}
+                onClick={() => { setActiveReport('report'); runReanalysis('report'); }}
+                disabled={isAnalyzing}
                 className={cn(
                   "w-full justify-start gap-3 h-14 glass transition-all",
                   activeReport === 'report' ? "bg-primary/20 border-primary shadow-[0_0_15px_rgba(69,175,219,0.2)]" : "hover:bg-white/10"
                 )}
                 variant="outline"
               >
-                <FileText className={cn("h-5 w-5", activeReport === 'report' ? "text-primary" : "text-muted-foreground")} />
+                {loadingProtocol === 'report' ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className={cn("h-5 w-5", activeReport === 'report' ? "text-primary" : "text-muted-foreground")} />}
                 <div className="text-left">
                   <div className="text-xs font-bold uppercase">Situation Report</div>
                   <div className="text-[10px] text-muted-foreground uppercase opacity-60 font-black">Neural Summary</div>
                 </div>
               </Button>
               <Button 
-                onClick={() => setActiveReport('evacuation')}
+                onClick={() => { setActiveReport('evacuation'); runReanalysis('evacuation'); }}
+                disabled={isAnalyzing}
                 className={cn(
                   "w-full justify-start gap-3 h-14 glass transition-all",
                   activeReport === 'evacuation' ? "bg-destructive/20 border-destructive shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "hover:bg-white/10"
                 )}
                 variant="outline"
               >
-                <Navigation className={cn("h-5 w-5", activeReport === 'evacuation' ? "text-destructive" : "text-muted-foreground")} />
+                {loadingProtocol === 'evacuation' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Navigation className={cn("h-5 w-5", activeReport === 'evacuation' ? "text-destructive" : "text-muted-foreground")} />}
                 <div className="text-left">
                   <div className="text-xs font-bold uppercase">Evacuation Plan</div>
                   <div className="text-[10px] text-muted-foreground uppercase opacity-60 font-black">Route Matrix</div>
                 </div>
               </Button>
               <Button 
-                onClick={() => setActiveReport('allocation')}
+                onClick={() => { setActiveReport('allocation'); runReanalysis('allocation'); }}
+                disabled={isAnalyzing}
                 className={cn(
                   "w-full justify-start gap-3 h-14 glass transition-all",
                   activeReport === 'allocation' ? "bg-accent/20 border-accent shadow-[0_0_15px_rgba(125,102,237,0.2)]" : "hover:bg-white/10"
                 )}
                 variant="outline"
               >
-                <Truck className={cn("h-5 w-5", activeReport === 'allocation' ? "text-accent" : "text-muted-foreground")} />
+                {loadingProtocol === 'allocation' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Truck className={cn("h-5 w-5", activeReport === 'allocation' ? "text-accent" : "text-muted-foreground")} />}
                 <div className="text-left">
                   <div className="text-xs font-bold uppercase">Resource Logic</div>
                   <div className="text-[10px] text-muted-foreground uppercase opacity-60 font-black">Logistical Load</div>
@@ -228,24 +239,22 @@ export default function AICommanderPage() {
           </Card>
         </div>
 
-        {/* Center Column: Command Log & Detailed View */}
         <div className="md:col-span-6 flex flex-col min-h-0 gap-6">
-          {/* Detailed Intelligence View */}
           <Card className="glass-card border-t-4 border-t-primary shadow-2xl flex-1 flex flex-col">
             <CardHeader className="border-b border-white/5 bg-white/5 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
                 <Info className="h-4 w-4 text-primary" />
                 Tactical Detail: {activeReport.toUpperCase()}
               </CardTitle>
-              <Badge variant="outline" className="text-[10px] font-mono">{analysis?.confidence || 0}% Model confidence</Badge>
+              <Badge variant="outline" className="text-[10px] font-mono">{analysis?.confidence || 0}% AI Confidence</Badge>
             </CardHeader>
             <div className="flex-1 p-6 overflow-auto">
               {analysis ? (
                 <div className="prose prose-invert max-w-none">
-                  <div className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap font-medium bg-white/5 p-6 rounded-xl border border-white/5 italic">
-                    {activeReport === 'report' ? analysis.situationReport :
-                     activeReport === 'evacuation' ? analysis.evacuationPlan :
-                     analysis.resourceAllocation}
+                  <div className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap font-medium bg-white/5 p-6 rounded-xl border border-white/5 italic transition-all duration-300">
+                    {activeReport === 'report' ? (analysis.situationReport || "Synthesizing report...") :
+                     activeReport === 'evacuation' ? (analysis.evacuationPlan || "Calculating routes...") :
+                     (analysis.resourceAllocation || "Projecting inventory...")}
                   </div>
                 </div>
               ) : (
@@ -257,7 +266,6 @@ export default function AICommanderPage() {
             </div>
           </Card>
 
-          {/* Neural Command Stream */}
           <Card className="glass-card h-[40%] flex flex-col overflow-hidden border-t-4 border-t-accent">
             <CardHeader className="border-b border-white/5 bg-white/5 py-3 flex flex-row items-center justify-between">
               <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
@@ -268,7 +276,7 @@ export default function AICommanderPage() {
             <ScrollArea className="flex-1 p-4" ref={scrollRef}>
               <div className="space-y-3">
                 {tacticalFeed.map((msg, i) => (
-                  <div key={i} className={`flex flex-col ${msg.source === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div key={i} className={`flex flex-col animate-in slide-in-from-top-1 duration-300 ${msg.source === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-[8px] font-mono text-muted-foreground">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -293,7 +301,7 @@ export default function AICommanderPage() {
                   </div>
                 ))}
                 {isAnalyzing && (
-                  <div className="flex flex-col items-start">
+                  <div className="flex flex-col items-start animate-pulse">
                     <div className="bg-accent/5 border border-accent/10 p-3 rounded-xl rounded-tl-none flex items-center gap-3">
                       <Loader2 className="h-3 w-3 animate-spin text-accent" />
                       <span className="text-[10px] text-muted-foreground italic font-mono tracking-widest">Accessing tactical clusters...</span>
@@ -318,7 +326,6 @@ export default function AICommanderPage() {
           </Card>
         </div>
 
-        {/* Right Column: Impact Vector Analysis */}
         <div className="md:col-span-3 space-y-6 overflow-y-auto pr-1">
           <Card className="glass-card border-t-2 border-t-white/10 shadow-xl">
             <CardHeader className="pb-3 bg-white/5 border-b border-white/5">
@@ -336,7 +343,7 @@ export default function AICommanderPage() {
               </div>
               
               <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
                   <div className="flex items-center gap-3">
                     <Droplets className="h-4 w-4 text-primary" />
                     <span className="text-[11px] font-bold uppercase tracking-tight">Water req.</span>
@@ -345,7 +352,7 @@ export default function AICommanderPage() {
                     {analysis?.impactAnalysis ? `${analysis.impactAnalysis.waterRequired.toLocaleString()} L` : "---"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
                   <div className="flex items-center gap-3">
                     <Utensils className="h-4 w-4 text-amber-500" />
                     <span className="text-[11px] font-bold uppercase tracking-tight">Food req.</span>
@@ -354,7 +361,7 @@ export default function AICommanderPage() {
                     {analysis?.impactAnalysis ? `${analysis.impactAnalysis.foodRequired.toLocaleString()} KG` : "---"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
                   <div className="flex items-center gap-3">
                     <PlusCircle className="h-4 w-4 text-emerald-500" />
                     <span className="text-[11px] font-bold uppercase tracking-tight">Medical</span>
@@ -371,19 +378,19 @@ export default function AICommanderPage() {
             <CardHeader className="pb-3 border-b border-white/5">
               <CardTitle className="text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-2">
                 <ShieldAlert className="h-3 w-3" />
-                Neural Integrity
+                AI Integrity
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-mono">
-                  <span className="uppercase font-bold">Fidelity</span>
+                  <span className="uppercase font-bold">Confidence</span>
                   <span className="text-accent font-black">{analysis?.confidence || 0}%</span>
                 </div>
                 <Progress value={analysis?.confidence || 0} className="h-1 bg-white/5" />
               </div>
               <p className="text-[9px] leading-relaxed text-muted-foreground italic font-medium">
-                AI cluster is processing high-bandwidth telemetry from global tactical sensor nodes.
+                Neural clusters are parsing high-bandwidth telemetry from global tactical sensor nodes.
               </p>
             </CardContent>
           </Card>
