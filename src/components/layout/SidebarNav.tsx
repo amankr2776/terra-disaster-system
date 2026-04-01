@@ -44,16 +44,32 @@ export function SidebarNav() {
   const [health, setHealth] = useState(0)
 
   useEffect(() => {
-    // 1. Connection Listener
-    const connectedRef = ref(database, ".info/connected")
-    // 2. AI Analysis Listener
-    const analysisRef = ref(database, "terra/aiAnalysis")
-    // 3. Disaster Listener
-    const disasterRef = ref(database, "terra/activeDisaster")
-
+    // Variables for tracking state within the effect
     let isConnected = false
     let lastAiAnalysis = 0
     let activeDisasterExists = false
+
+    // 1. Define the health calculation function first to avoid temporal dead zone (ReferenceError)
+    const calculateHealth = () => {
+      let score = 0
+      
+      // Connection score (34%)
+      if (isConnected) score += 34
+
+      // AI Freshness score (33%) - Within last 10 minutes
+      const tenMinutesAgo = Date.now() - 10 * 60 * 1000
+      if (lastAiAnalysis > tenMinutesAgo) score += 33
+
+      // Active Grid score (33%)
+      if (activeDisasterExists) score += 33
+
+      setHealth(score)
+    }
+
+    // 2. Setup Firebase Listeners
+    const connectedRef = ref(database, ".info/connected")
+    const analysisRef = ref(database, "terra/aiAnalysis")
+    const disasterRef = ref(database, "terra/activeDisaster")
 
     const unsubConnected = onValue(connectedRef, (snap) => {
       isConnected = !!snap.val()
@@ -70,22 +86,6 @@ export function SidebarNav() {
       activeDisasterExists = !!snap.val()
       calculateHealth()
     })
-
-    const calculateHealth = () => {
-      let score = 0
-      
-      // Connection score (34%)
-      if (isConnected) score += 34
-
-      // AI Freshness score (33%) - Within last 10 minutes
-      const tenMinutesAgo = Date.now() - 10 * 60 * 1000
-      if (lastAiAnalysis > tenMinutesAgo) score += 33
-
-      // Active Grid score (33%)
-      if (activeDisasterExists) score += 33
-
-      setHealth(score)
-    }
 
     // Recalculate health periodically to catch AI "staling"
     const interval = setInterval(calculateHealth, 30000)
