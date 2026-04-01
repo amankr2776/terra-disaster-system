@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -49,8 +48,8 @@ export function SidebarNav() {
     let lastAiAnalysis = 0
     let activeDisasterExists = false
 
-    // 1. Define the health calculation function first to avoid temporal dead zone (ReferenceError)
-    const calculateHealth = () => {
+    // 1. Define the health calculation function with a function declaration to ensure hoisting
+    function calculateHealth() {
       let score = 0
       
       // Connection score (34%)
