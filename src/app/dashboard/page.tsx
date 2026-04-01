@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -28,11 +29,15 @@ export default function DashboardPage() {
     try {
       const res = await fetch('/api/weather');
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setWeather(data.telemetry);
-      setError(false);
+      
+      if (data.error) {
+        setError(true);
+        if (data.telemetry) setWeather(data.telemetry);
+      } else {
+        setWeather(data.telemetry);
+        setError(false);
+      }
     } catch (e) {
-      console.error(e);
       setError(true);
     } finally {
       setLoadingWeather(false);
@@ -41,13 +46,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchWeather();
-    const interval = setInterval(fetchWeather, 60000); // Updated to 60 seconds
+    const interval = setInterval(fetchWeather, 60000);
     return () => clearInterval(interval);
   }, []);
 
   const displayVal = (val: string | undefined) => {
     if (loadingWeather && !weather) return <Loader2 className="h-4 w-4 animate-spin" />;
-    if (error || !val) return "N/A";
+    if (error || !val || val === "N/A") return "N/A";
     return val;
   };
 
