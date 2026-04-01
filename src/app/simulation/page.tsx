@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -8,9 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Zap, RotateCcw, Play, Pause, AlertTriangle, Layers, Info, Activity, CloudRain, Wind, ShieldAlert, Cpu, Loader2, Waves, Flame, Tornado, Thermometer, Box } from "lucide-react"
+import { Zap, RotateCcw, Play, Pause, Activity, Box, Waves, Flame, Tornado, Thermometer, Cpu } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { getCommanderIntelligence } from "@/ai/flows/commander-intelligence"
 
 const disasterConfig = {
   flood: { icon: Waves, color: "#45AFDB", label: "Inundation Spread" },
@@ -34,8 +34,6 @@ export default function SimulationPage() {
   const [selectedZone, setSelectedZone] = useState("Colaba")
   const [disasterType, setDisasterType] = useState<keyof typeof disasterConfig>("flood")
   const [intensity, setIntensity] = useState([3])
-  const [weather, setWeather] = useState<any>(null)
-  const [aiAnalyzing, setAiAnalyzing] = useState(false)
 
   const cityCoords: Record<string, [number, number]> = {
     chennai: [80.2707, 13.0827],
@@ -47,16 +45,15 @@ export default function SimulationPage() {
     setSelectedZone(cityZones[selectedCity][0])
   }, [selectedCity])
 
-  useEffect(() => {
-    fetch('/api/weather').then(res => res.json()).then(data => setWeather(data.telemetry))
-  }, [])
-
-  // Spread Animation Generator (GeoJSON Circle)
+  // Spread and Pulse Animation Generator (GeoJSON Circle)
   const disasterOverlay = useMemo(() => {
-    if (!isPlaying) return null
+    if (!isPlaying && timelineValue[0] === 0) return null
 
     const center = cityCoords[selectedCity]
-    const radius = (timelineValue[0] * intensity[0]) * 0.002
+    // Pulse effect: adds a slight sine wave to the radius based on current state
+    const pulseFactor = isPlaying ? (1 + Math.sin(Date.now() / 200) * 0.05) : 1
+    const radius = (timelineValue[0] * intensity[0]) * 0.002 * pulseFactor
+    
     const points = 64
     const coords = []
 
@@ -73,7 +70,9 @@ export default function SimulationPage() {
       type: 'FeatureCollection',
       features: [{
         type: 'Feature',
-        properties: { color: disasterConfig[disasterType].color },
+        properties: { 
+          color: disasterType === 'flood' ? '#45AFDB' : '#ef4444' 
+        },
         geometry: { type: 'Polygon', coordinates: [coords] }
       }]
     }
@@ -112,6 +111,10 @@ export default function SimulationPage() {
   const handleReset = () => {
     setIsPlaying(false)
     setTimelineValue([0])
+    toast({
+      title: "Tactical Reset",
+      description: "Simulation parameters and map overlays cleared.",
+    })
   }
 
   const CurrentDisasterIcon = disasterConfig[disasterType].icon
@@ -122,8 +125,9 @@ export default function SimulationPage() {
       <div className="absolute inset-0 z-0">
         <TerraMap 
           center={cityCoords[selectedCity]}
-          zoom={12}
+          zoom={11}
           disasterOverlay={disasterOverlay}
+          enable3D={true}
         />
       </div>
 

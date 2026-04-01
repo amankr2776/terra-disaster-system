@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useEffect, useRef, useState } from 'react'
@@ -36,17 +37,20 @@ const STATIC_FLOOD_ZONES = {
 
 export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [], disasterOverlay, enable3D = true }: TerraMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
-  const map = useRef<maplibregl.Map | null>(null)
+  const mapRef = useRef<maplibregl.Map | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const markersRef = useRef<maplibregl.Marker[]>([])
 
   // 1. Initialize the map
   useEffect(() => {
-    if (!mapContainer.current || map.current) return
+    if (!mapContainer.current || mapRef.current) return
+
+    const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'zHj4ilgxRPn8cl8QciXg'
+    const styleUrl = `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${maptilerKey}`
 
     const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
-      style: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
+      style: styleUrl,
       center: center,
       zoom: zoom,
       pitch: enable3D ? 45 : 0,
@@ -54,10 +58,10 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       attributionControl: false
     })
 
-    map.current = mapInstance
+    mapRef.current = mapInstance
 
     mapInstance.on('load', () => {
-      if (!mapInstance || !mapInstance.getCanvas()) return
+      if (!mapRef.current) return
 
       try {
         if (enable3D) {
@@ -124,9 +128,9 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
     })
 
     return () => {
-      if (map.current) {
-        map.current.remove()
-        map.current = null
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
       }
       setIsLoaded(false)
     }
@@ -134,9 +138,9 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // 2. Handle center and zoom changes
   useEffect(() => {
-    if (!map.current || !isLoaded) return
+    if (!mapRef.current || !isLoaded) return
     try {
-      map.current.easeTo({ center, zoom, duration: 1000 })
+      mapRef.current.easeTo({ center, zoom, duration: 1000 })
     } catch (e) {
       console.warn("Failed to ease map", e)
     }
@@ -144,12 +148,12 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // 3. Handle dynamic overlay changes
   useEffect(() => {
-    if (!map.current || !isLoaded) return
+    if (!mapRef.current || !isLoaded) return
     
     const updateOverlay = () => {
-      if (!map.current || !map.current.getCanvas()) return
+      if (!mapRef.current || !mapRef.current.getCanvas()) return
       try {
-        const source = map.current.getSource('simulation-source') as maplibregl.GeoJSONSource
+        const source = mapRef.current.getSource('simulation-source') as maplibregl.GeoJSONSource
         if (source) {
           source.setData(disasterOverlay || { type: 'FeatureCollection', features: [] })
         }
@@ -158,18 +162,18 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       }
     }
 
-    if (map.current.isStyleLoaded()) {
+    if (mapRef.current.isStyleLoaded()) {
       updateOverlay()
     } else {
-      map.current.once('idle', updateOverlay)
+      mapRef.current.once('idle', updateOverlay)
     }
   }, [disasterOverlay, isLoaded])
 
   // 4. Handle markers updates
   useEffect(() => {
-    if (!map.current || !isLoaded) return
+    if (!mapRef.current || !isLoaded) return
 
-    const currentMap = map.current
+    const currentMap = mapRef.current
 
     // Clear existing markers immediately
     markersRef.current.forEach(m => m.remove())
@@ -191,7 +195,6 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
         el.style.boxShadow = `0 0 15px ${color}`
         
         try {
-          // Re-verify map validity before adding to prevent 'projection' error
           if (currentMap && currentMap.getCanvas()) {
             const marker = new maplibregl.Marker(el)
               .setLngLat(markerData.coordinates)
