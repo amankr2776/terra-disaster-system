@@ -2,22 +2,39 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // Defaulting to Mumbai coordinates for the primary sector
     const lat = 19.0760;
     const lon = 72.8777;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,surface_pressure&timezone=auto`;
+    const apiKey = process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY;
 
-    const response = await fetch(url, { next: { revalidate: 300 } }); // Cache for 5 mins
+    if (!apiKey) {
+      throw new Error('OpenWeather API Key is missing');
+    }
+
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+
+    const response = await fetch(url, { next: { revalidate: 60 } });
+    
+    if (!response.ok) {
+      throw new Error(`Weather API responded with ${response.status}`);
+    }
+
     const data = await response.json();
+
+    // OpenWeather provides wind speed in m/s when using units=metric. 
+    // Convert m/s to km/h: 1 m/s * 3.6 = 1 km/h
+    const windSpeedKmH = (data.wind.speed * 3.6).toFixed(1);
+    
+    // Rain info is optional in the response
+    const rainfall = data.rain ? `${data.rain['1h'] || 0}mm/h` : "0mm/h";
 
     const weatherData = {
       timestamp: new Date().toISOString(),
       telemetry: {
-        rainfall: `${data.current.precipitation}mm/h`,
-        windSpeed: `${data.current.wind_speed_10m}km/h`,
-        temperature: `${data.current.temperature_2m}°C`,
-        humidity: `${data.current.relative_humidity_2m}%`,
-        pressure: `${data.current.surface_pressure} hPa`
+        rainfall: rainfall,
+        windSpeed: `${windSpeedKmH}km/h`,
+        temperature: `${data.main.temp.toFixed(1)}°C`,
+        humidity: `${data.main.humidity}%`,
+        pressure: `${data.main.pressure} hPa`
       },
       status: "Live Satellite Feed"
     };
@@ -25,6 +42,13 @@ export async function GET() {
     return NextResponse.json(weatherData);
   } catch (error) {
     console.error('Weather fetch error:', error);
-    return NextResponse.json({ error: "Failed to sync with weather satellite" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Failed to sync with weather satellite",
+      telemetry: {
+        rainfall: "N/A",
+        windSpeed: "N/A",
+        temperature: "N/A"
+      }
+    }, { status: 500 });
   }
 }

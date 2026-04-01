@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bell, User, CloudRain, Wind, Thermometer, Activity, Layers, RefreshCw } from "lucide-react"
+import { Bell, User, CloudRain, Wind, Thermometer, Layers, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
@@ -10,15 +10,19 @@ import { Separator } from "@/components/ui/separator"
 export function Header() {
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const fetchWeather = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/weather');
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setWeather(data.telemetry);
+      setError(false);
     } catch (e) {
       console.error(e);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -26,9 +30,15 @@ export function Header() {
 
   useEffect(() => {
     fetchWeather();
-    const interval = setInterval(fetchWeather, 300000); // Refresh every 5 mins
+    const interval = setInterval(fetchWeather, 60000); // Updated to 60 seconds
     return () => clearInterval(interval);
   }, []);
+
+  const displayVal = (val: string | undefined) => {
+    if (loading && !weather) return "---";
+    if (error || !val) return "N/A";
+    return val;
+  };
 
   return (
     <header className="h-16 border-b border-white/10 bg-background/40 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-300">
@@ -45,8 +55,10 @@ export function Header() {
         <Separator orientation="vertical" className="h-6 bg-white/10 hidden md:block" />
         
         <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/20">
-          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">System: {loading ? 'Syncing...' : 'Optimal'}</span>
+          <div className={`w-2 h-2 rounded-full ${error ? 'bg-destructive' : 'bg-primary'} animate-pulse`} />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+            System: {loading ? 'Syncing...' : error ? 'Degraded' : 'Optimal'}
+          </span>
         </div>
       </div>
 
@@ -56,7 +68,7 @@ export function Header() {
           <CloudRain className="h-3.5 w-3.5 text-primary group-hover:scale-110 transition-transform" />
           <div className="flex flex-col">
             <span className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Rainfall</span>
-            <span className="text-xs font-mono font-medium">{weather?.rainfall || '---'}</span>
+            <span className="text-xs font-mono font-medium">{displayVal(weather?.rainfall)}</span>
           </div>
         </div>
         <Separator orientation="vertical" className="h-4 bg-white/10" />
@@ -64,7 +76,7 @@ export function Header() {
           <Wind className="h-3.5 w-3.5 text-accent group-hover:scale-110 transition-transform" />
           <div className="flex flex-col">
             <span className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Wind</span>
-            <span className="text-xs font-mono font-medium">{weather?.windSpeed || '---'}</span>
+            <span className="text-xs font-mono font-medium">{displayVal(weather?.windSpeed)}</span>
           </div>
         </div>
         <Separator orientation="vertical" className="h-4 bg-white/10" />
@@ -72,7 +84,7 @@ export function Header() {
           <Thermometer className="h-3.5 w-3.5 text-amber-500 group-hover:scale-110 transition-transform" />
           <div className="flex flex-col">
             <span className="text-[9px] text-muted-foreground uppercase font-bold leading-none">Temp</span>
-            <span className="text-xs font-mono font-medium">{weather?.temperature || '---'}</span>
+            <span className="text-xs font-mono font-medium">{displayVal(weather?.temperature)}</span>
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={fetchWeather} className="h-6 w-6 rounded-full hover:bg-white/10 ml-2">

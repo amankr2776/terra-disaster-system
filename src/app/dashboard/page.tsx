@@ -4,12 +4,8 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TerraMap } from "@/components/map/TerraMap"
 import { 
-  AlertTriangle, 
   Users, 
-  Activity, 
   CloudRain,
-  Map as MapIcon,
-  ShieldCheck,
   Zap,
   Wind,
   Thermometer,
@@ -26,23 +22,34 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 export default function DashboardPage() {
   const [weather, setWeather] = useState<any>(null);
   const [loadingWeather, setLoadingWeather] = useState(true);
+  const [error, setError] = useState(false);
+
+  const fetchWeather = async () => {
+    try {
+      const res = await fetch('/api/weather');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setWeather(data.telemetry);
+      setError(false);
+    } catch (e) {
+      console.error(e);
+      setError(true);
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchWeather = async () => {
-      try {
-        const res = await fetch('/api/weather');
-        const data = await res.json();
-        setWeather(data.telemetry);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoadingWeather(false);
-      }
-    };
     fetchWeather();
-    const interval = setInterval(fetchWeather, 300000);
+    const interval = setInterval(fetchWeather, 60000); // Updated to 60 seconds
     return () => clearInterval(interval);
   }, []);
+
+  const displayVal = (val: string | undefined) => {
+    if (loadingWeather && !weather) return <Loader2 className="h-4 w-4 animate-spin" />;
+    if (error || !val) return "N/A";
+    return val;
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-theme(spacing.24))] gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 overflow-hidden">
@@ -56,9 +63,9 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-2xl font-black tracking-tighter uppercase italic">Authority Command Center</h1>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] bg-primary/10 border-primary/20 text-primary gap-1.5 px-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                Live Subcontinent Grid
+              <Badge variant="outline" className={`text-[10px] ${error ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-primary/10 border-primary/20 text-primary'} gap-1.5 px-2`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${error ? 'bg-destructive' : 'bg-primary'} animate-pulse`} />
+                {error ? 'Satellite Link Degraded' : 'Live Subcontinent Grid'}
               </Badge>
               <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Mumbai Sector | T-Zero Sync</span>
             </div>
@@ -70,7 +77,7 @@ export default function DashboardPage() {
              <div className="text-right">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Precipitation</div>
                 <div className="text-lg font-mono font-bold text-primary leading-none">
-                  {loadingWeather ? <Loader2 className="h-4 w-4 animate-spin" /> : weather?.rainfall || '---'}
+                  {displayVal(weather?.rainfall)}
                 </div>
              </div>
              <CloudRain className="h-5 w-5 text-primary opacity-50" />
@@ -79,7 +86,7 @@ export default function DashboardPage() {
              <div className="text-right">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Wind Speed</div>
                 <div className="text-lg font-mono font-bold text-accent leading-none">
-                  {loadingWeather ? <Loader2 className="h-4 w-4 animate-spin" /> : weather?.windSpeed || '---'}
+                  {displayVal(weather?.windSpeed)}
                 </div>
              </div>
              <Wind className="h-5 w-5 text-accent opacity-50" />
@@ -88,7 +95,7 @@ export default function DashboardPage() {
              <div className="text-right">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Atmosphere</div>
                 <div className="text-lg font-mono font-bold text-amber-500 leading-none">
-                  {loadingWeather ? <Loader2 className="h-4 w-4 animate-spin" /> : weather?.temperature || '---'}
+                  {displayVal(weather?.temperature)}
                 </div>
              </div>
              <Thermometer className="h-5 w-5 text-amber-500 opacity-50" />
@@ -159,7 +166,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="bg-white/5 border border-white/5 p-3 rounded-xl flex flex-col items-center">
                      <span className="text-[8px] font-bold text-muted-foreground uppercase mb-1">System Health</span>
-                     <span className="text-xl font-bold text-emerald-500">OPTIMAL</span>
+                     <span className={`text-xl font-bold ${error ? 'text-destructive' : 'text-emerald-500'}`}>{error ? 'DEGRADED' : 'OPTIMAL'}</span>
                   </div>
                </div>
             </CardContent>
