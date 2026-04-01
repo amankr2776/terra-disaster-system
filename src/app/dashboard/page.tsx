@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const [weather, setWeather] = useState<any>(null)
   const [tacticalFeed, setTacticalFeed] = useState<any[]>([])
   const [isConnected, setIsConnected] = useState(false)
+  const [systemOnline, setSystemOnline] = useState(false)
   const [loading, setLoading] = useState(true)
   const [isTimedOut, setIsTimedOut] = useState(false)
 
@@ -52,17 +53,31 @@ export default function DashboardPage() {
       setIsTimedOut(true)
     }, 5000)
 
+    // 0. Listen for system connection
+    const connectedRef = ref(database, '.info/connected')
+    const unsubSystem = onValue(connectedRef, (snap) => {
+      setSystemOnline(!!snap.val())
+    })
+
     // 1. Listen for Active Disaster
     const disasterRef = ref(database, 'terra/activeDisaster')
     const unsubscribeDisaster = onValue(disasterRef, (snapshot) => {
+      // DEBUG LOGS
+      console.log('Firebase snapshot exists:', snapshot.exists())
+      console.log('Firebase data at terra/activeDisaster:', snapshot.val())
+
       if (snapshot.exists()) {
         setActiveDisaster(snapshot.val())
         setIsConnected(true)
         setIsTimedOut(false)
         setLoading(false)
         clearTimeout(loadTimeout)
+      } else {
+        // Even if empty, if the callback fired, we have reached the server
+        setIsConnected(false)
       }
-    }, () => {
+    }, (error) => {
+      console.error('Firebase connection error:', error)
       setLoading(false)
       clearTimeout(loadTimeout)
     })
@@ -91,6 +106,7 @@ export default function DashboardPage() {
       unsubscribeDisaster()
       unsubscribeWeather()
       unsubscribeFeed()
+      unsubSystem()
       clearTimeout(loadTimeout)
     }
   }, [])
@@ -123,11 +139,13 @@ export default function DashboardPage() {
     <div className="flex flex-col h-[calc(100vh-theme(spacing.24))] gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 overflow-hidden">
       
       {/* Offline Alert Banner */}
-      {(!isConnected || isTimedOut) && (
+      {(!isConnected || isTimedOut || !systemOnline) && (
         <div className="bg-destructive/20 border border-destructive/30 px-4 py-2 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <WifiOff className="h-4 w-4 text-destructive" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-destructive">Neural Link Fragmented — Displaying Cached/Standby Data</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-destructive">
+              {!systemOnline ? "SYSTEM: OFFLINE — Waiting for Satellite Link" : "Neural Link Fragmented — Displaying Cached/Standby Data"}
+            </span>
           </div>
           <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold text-destructive hover:bg-destructive/10" onClick={() => window.location.reload()}>
             RE-ESTABLISH LINK
@@ -146,10 +164,10 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Badge variant="outline" className={cn(
                 "text-[10px] gap-1.5 px-2",
-                isConnected ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-destructive/10 border-destructive/20 text-destructive"
+                systemOnline ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-destructive/10 border-destructive/20 text-destructive"
               )}>
-                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isConnected ? "bg-emerald-500" : "bg-destructive")} />
-                {isConnected ? 'LIVE SUBCONTINENT GRID' : 'SATELLITE SYNC FAILED'}
+                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", systemOnline ? "bg-emerald-500" : "bg-destructive")} />
+                {systemOnline ? 'LIVE SUBCONTINENT GRID' : 'SATELLITE SYNC FAILED'}
               </Badge>
               <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">{currentData.sector || 'Global'} | T-Zero Sync</span>
             </div>
