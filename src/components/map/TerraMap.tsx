@@ -50,7 +50,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // 1. Initialize the map
   useEffect(() => {
-    // 5. Ensure container exists before initialization
+    // FIX 5: Ensure container exists before initialization
     if (!mapContainer.current || map.current) return
 
     const mapInstance = new maplibregl.Map({
@@ -65,8 +65,9 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
     map.current = mapInstance
 
-    // 1. Wrap every map modification inside the 'load' callback
+    // FIX 1: Wrap every map modification inside the 'load' callback
     mapInstance.on('load', () => {
+      // FIX 2: Null check before access
       if (!mapInstance || mapInstance.isStyleLoaded() === false) return
 
       try {
@@ -133,7 +134,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       }
     })
 
-    // 3. Cleanup function destroys the map properly
+    // FIX 3: Cleanup function destroys the map properly
     return () => {
       if (map.current) {
         map.current.remove()
@@ -145,7 +146,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // 2. Handle center and zoom changes
   useEffect(() => {
-    // 2. Null check before every map access
+    // FIX 2: Null check before every map access
     if (!map.current || !isLoaded) return
 
     try {
@@ -157,7 +158,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // 4. Handle dynamic overlay changes
   useEffect(() => {
-    // 2. Null check and 4. Check if loaded
+    // FIX 2: Null check and FIX 4: Check if loaded
     if (!map.current || !isLoaded) return
     
     const updateOverlay = () => {
@@ -181,7 +182,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
   // Handle markers updates
   useEffect(() => {
-    // 2. Null check and 4. Check if loaded
+    // FIX 2: Null check and FIX 4: Check if loaded
     if (!map.current || !isLoaded) return
 
     const currentMap = map.current
@@ -191,6 +192,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
     markersRef.current = []
 
     const addMarkers = () => {
+      // FIX 2: Null check inside nested callback
       if (!currentMap || !currentMap.getCanvas()) return
 
       markers.forEach(markerData => {
