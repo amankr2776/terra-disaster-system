@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 
 export function Header() {
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [isInitialSync, setIsInitialSync] = useState(true);
 
   const fetchWeather = async () => {
     setLoading(true);
@@ -35,8 +37,17 @@ export function Header() {
 
   useEffect(() => {
     fetchWeather();
+    
+    // UX forced delay for sync transition as requested
+    const timer = setTimeout(() => {
+      setIsInitialSync(false);
+    }, 2000);
+
     const interval = setInterval(fetchWeather, 60000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+    };
   }, []);
 
   const displayVal = (val: string | undefined) => {
@@ -60,9 +71,15 @@ export function Header() {
         <Separator orientation="vertical" className="h-6 bg-white/10 hidden md:block" />
         
         <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/20">
-          <div className={`w-2 h-2 rounded-full ${error ? 'bg-destructive' : 'bg-primary'} animate-pulse`} />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
-            System: {loading ? 'Syncing...' : error ? 'Degraded' : 'Optimal'}
+          <div className={cn(
+            "w-2 h-2 rounded-full animate-pulse",
+            isInitialSync ? "bg-primary" : error ? "bg-amber-500" : "bg-emerald-500"
+          )} />
+          <span className={cn(
+            "text-[10px] font-bold uppercase tracking-widest",
+            isInitialSync ? "text-primary" : error ? "text-amber-500" : "text-emerald-500"
+          )}>
+            System: {isInitialSync ? 'Syncing...' : error ? 'Degraded' : 'Online'}
           </span>
         </div>
       </div>
