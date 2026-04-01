@@ -1,0 +1,81 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Primary: #45AFDB -> hsl(198, 70%, 56%) */
+    /* Background: #1E282B -> hsl(194, 18%, 14%) */
+    /* Accent: #7D66ED -> hsl(250, 79%, 66%) */
+    
+    --background: 194 18% 14%;
+    --foreground: 0 0% 98%;
+    --card: 194 18% 16%;
+    --card-foreground: 0 0% 98%;
+    --popover: 194 18% 14%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 198 70% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 194 10% 20%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 194 10% 20%;
+    --muted-foreground: 194 10% 70%;
+    --accent: 250 79% 66%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 194 15% 25%;
+    --input: 194 15% 25%;
+    --ring: 198 70% 56%;
+    --radius: 0.75rem;
+
+    --sidebar-background: 194 20% 12%;
+    --sidebar-foreground: 194 10% 90%;
+    --sidebar-primary: 198 70% 56%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 194 15% 20%;
+    --sidebar-accent-foreground: 194 10% 100%;
+    --sidebar-border: 194 15% 25%;
+    --sidebar-ring: 198 70% 56%;
+
+    --chart-1: 198 70% 56%;
+    --chart-2: 250 79% 66%;
+    --chart-3: 173 58% 39%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+}
+
+.glass {
+  @apply bg-white/5 backdrop-blur-md border border-white/10;
+}
+
+.glass-card {
+  @apply bg-card/60 backdrop-blur-lg border border-white/10 shadow-xl;
+}
+
+.map-container {
+  @apply w-full h-full rounded-xl overflow-hidden border border-white/10;
+}
+
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+}
