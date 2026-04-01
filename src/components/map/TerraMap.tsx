@@ -65,61 +65,77 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
 
       try {
         if (enable3D) {
-          mapInstance.addLayer({
-            'id': '3d-buildings',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
-            'type': 'fill-extrusion',
-            'minzoom': 14,
-            'paint': {
-              'fill-extrusion-color': '#334155',
-              'fill-extrusion-height': ['get', 'render_height'],
-              'fill-extrusion-base': ['get', 'render_min_height'],
-              'fill-extrusion-opacity': 0.6
-            }
-          });
+          // Detect available vector source
+          const sourceId = mapInstance.getSource('openmaptiles') ? 'openmaptiles' : 
+                           mapInstance.getSource('maptiler') ? 'maptiler' : null;
+          
+          if (sourceId && !mapInstance.getLayer('3d-buildings')) {
+            mapInstance.addLayer({
+              'id': '3d-buildings',
+              'source': sourceId,
+              'source-layer': 'building',
+              'type': 'fill-extrusion',
+              'minzoom': 14,
+              'paint': {
+                'fill-extrusion-color': '#334155',
+                'fill-extrusion-height': ['get', 'render_height'],
+                'fill-extrusion-base': ['get', 'render_min_height'],
+                'fill-extrusion-opacity': 0.6
+              }
+            });
+          }
         }
 
-        mapInstance.addSource('flood-zones', {
-          type: 'geojson',
-          data: STATIC_FLOOD_ZONES as any
-        })
+        if (!mapInstance.getSource('flood-zones')) {
+          mapInstance.addSource('flood-zones', {
+            type: 'geojson',
+            data: STATIC_FLOOD_ZONES as any
+          })
+        }
 
-        mapInstance.addLayer({
-          id: 'flood-zones-fill',
-          type: 'fill',
-          source: 'flood-zones',
-          paint: {
-            'fill-color': ['get', 'color'],
-            'fill-opacity': 0.15
-          }
-        })
+        if (!mapInstance.getLayer('flood-zones-fill')) {
+          mapInstance.addLayer({
+            id: 'flood-zones-fill',
+            type: 'fill',
+            source: 'flood-zones',
+            paint: {
+              'fill-color': ['get', 'color'],
+              'fill-opacity': 0.15
+            }
+          })
+        }
 
-        mapInstance.addSource('simulation-source', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] }
-        })
+        if (!mapInstance.getSource('simulation-source')) {
+          mapInstance.addSource('simulation-source', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] }
+          })
+        }
 
-        mapInstance.addLayer({
-          id: 'simulation-layer-fill',
-          type: 'fill',
-          source: 'simulation-source',
-          paint: {
-            'fill-color': ['get', 'color'],
-            'fill-opacity': 0.4
-          }
-        })
+        if (!mapInstance.getLayer('simulation-layer-fill')) {
+          mapInstance.addLayer({
+            id: 'simulation-layer-fill',
+            type: 'fill',
+            source: 'simulation-source',
+            paint: {
+              'fill-color': ['get', 'color'],
+              'fill-opacity': 0.4
+            }
+          })
+        }
 
-        mapInstance.addLayer({
-          id: 'simulation-layer-outline',
-          type: 'line',
-          source: 'simulation-source',
-          paint: {
-            'line-color': ['get', 'color'],
-            'line-width': 3,
-            'line-dasharray': [2, 1]
-          }
-        })
+        if (!mapInstance.getLayer('simulation-layer-outline')) {
+          mapInstance.addLayer({
+            id: 'simulation-layer-outline',
+            type: 'line',
+            source: 'simulation-source',
+            paint: {
+              'line-color': ['get', 'color'],
+              'line-width': 3,
+              'line-dasharray': [2, 1]
+            }
+          })
+        }
 
         setIsLoaded(true)
       } catch (err) {
@@ -134,7 +150,7 @@ export function TerraMap({ center = [72.8777, 19.0760], zoom = 11, markers = [],
       }
       setIsLoaded(false)
     }
-  }, [])
+  }, [enable3D]) // Re-init if 3D state changes significantly
 
   // 2. Handle center and zoom changes
   useEffect(() => {
