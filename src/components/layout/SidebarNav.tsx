@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -35,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
 import { database, ref, onValue } from "@/lib/firebase"
 
 const navItems = [
@@ -60,6 +60,7 @@ export function SidebarNav() {
     let lastAiAnalysis = 0
     let activeDisasterExists = false
 
+    // Function defined at top of scope to ensure proper hoisting within useEffect
     function calculateHealth() {
       let firebaseScore = isConnected ? 34 : 0
       
