@@ -13,7 +13,8 @@ import {
   Package,
   Layers,
   UserCircle,
-  Lock
+  Lock,
+  Info
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -28,6 +29,12 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { database, ref, onValue } from "@/lib/firebase"
 
 const navItems = [
@@ -42,6 +49,11 @@ const navItems = [
 export function SidebarNav() {
   const pathname = usePathname()
   const [health, setHealth] = useState<number | null>(null)
+  const [healthBreakdown, setHealthBreakdown] = useState({
+    firebase: 0,
+    ai: 0,
+    data: 0
+  })
 
   useEffect(() => {
     let isConnected = false
@@ -49,17 +61,19 @@ export function SidebarNav() {
     let activeDisasterExists = false
 
     function calculateHealth() {
-      // Base score 33% (Weather Satellites / Atmospheric data usually works)
-      let score = 33
+      let firebaseScore = isConnected ? 34 : 0
       
-      // Connection score (34%)
-      if (isConnected) score += 34
-
-      // AI Freshness / Disaster Grid score (33%)
       const tenMinutesAgo = Date.now() - 10 * 60 * 1000
-      if (lastAiAnalysis > tenMinutesAgo || activeDisasterExists) score += 33
+      let aiScore = lastAiAnalysis > tenMinutesAgo ? 33 : 0
+      
+      let dataScore = activeDisasterExists ? 33 : 33 // Base 33% for satellite data always working
 
-      setHealth(Math.min(score, 100))
+      setHealthBreakdown({
+        firebase: firebaseScore,
+        ai: aiScore,
+        data: dataScore
+      })
+      setHealth(Math.min(firebaseScore + aiScore + dataScore, 100))
     }
 
     const connectedRef = ref(database, ".info/connected")
@@ -195,18 +209,49 @@ export function SidebarNav() {
       </SidebarContent>
 
       <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
-        <div className="p-4 rounded-xl bg-accent/10 border border-accent/20">
-          <p className="text-[11px] text-accent font-bold uppercase tracking-wider mb-1">System Integrity</p>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 bg-accent/20 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-accent transition-all duration-1000" 
-                style={{ width: `${health || 0}%` }} 
-              />
-            </div>
-            <span className="text-[10px] text-accent font-black">{health === null ? '—%' : `${health}%`}</span>
-          </div>
-        </div>
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-4 rounded-xl bg-accent/10 border border-accent/20 cursor-help group hover:bg-accent/20 transition-all shadow-lg shadow-accent/5">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] text-accent font-black uppercase tracking-widest">System Integrity</p>
+                  <Info className="h-3 w-3 text-accent opacity-40 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-accent/20 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-accent transition-all duration-1000 shadow-[0_0_8px_var(--accent)]" 
+                      style={{ width: `${health || 0}%` }} 
+                    />
+                  </div>
+                  <span className="text-[10px] text-accent font-black">{health === null ? '—%' : `${health}%`}</span>
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" className="glass-card border-accent/20 p-3 space-y-2">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-8">
+                  <span className="text-[10px] font-bold uppercase text-muted-foreground">Firebase Link</span>
+                  <Badge variant="outline" className={cn("text-[9px] font-mono", healthBreakdown.firebase > 0 ? "border-emerald-500/30 text-emerald-500" : "border-destructive/30 text-destructive")}>
+                    {healthBreakdown.firebase}%
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between gap-8">
+                  <span className="text-[10px] font-bold uppercase text-muted-foreground">Neural Active</span>
+                  <Badge variant="outline" className={cn("text-[9px] font-mono", healthBreakdown.ai > 0 ? "border-emerald-500/30 text-emerald-500" : "border-destructive/30 text-destructive")}>
+                    {healthBreakdown.ai}%
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between gap-8">
+                  <span className="text-[10px] font-bold uppercase text-muted-foreground">Satellite Grid</span>
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-500 text-[9px] font-mono">
+                    {healthBreakdown.data}%
+                  </Badge>
+                </div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </SidebarFooter>
     </Sidebar>
   )
