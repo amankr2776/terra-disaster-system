@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { database, ref, onValue, push, serverTimestamp } from "@/lib/firebase"
+import { database, ref, onValue, push } from "@/lib/firebase"
 import { cn } from "@/lib/utils"
 import {
   Dialog,
@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { Skeleton } from "@/components/ui/skeleton"
 
 // Fallback data for offline/empty states
 const MOCK_DISASTER = {
@@ -69,6 +70,10 @@ export default function DashboardPage() {
   const [broadcastPriority, setBroadcastPriority] = useState("WARNING")
   const [lastReadTime, setLastReadTime] = useState<number>(Date.now())
   const [isWeatherRefreshing, setIsWeatherRefreshing] = useState(false)
+  
+  // Real Weather State
+  const [userLocation, setUserLocation] = useState<string>("")
+  const [weatherLoading, setWeatherLoading] = useState(true)
 
   // Effect 1: Firebase listeners — runs ONCE only
   useEffect(() => {
@@ -162,15 +167,62 @@ export default function DashboardPage() {
     }
   }, [tacticalFeed, settings, lastReadTime])
 
-  const getSeverityConfig = (severity: string) => {
-    switch (severity?.toUpperCase()) {
-      case 'CRITICAL': return { color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' }
-      case 'HIGH': return { color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20' }
-      case 'MODERATE': return { color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20' }
-      case 'LOW': return { color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' }
-      default: return { color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' }
+  // Effect 4: Real-time Geolocation Weather
+  useEffect(() => {
+    const fetchWeatherByLocation = async (lat: number, lon: number) => {
+      setWeatherLoading(true)
+      try {
+        const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`)
+        const data = await res.json()
+        if (data.rainfall !== undefined) {
+          setWeather(data)
+          setUserLocation(`${data.location}, ${data.country}`)
+          
+          // Write to Firebase backbone via REST
+          await fetch(
+            "https://terra-digital-twin-default-rtdb.asia-southeast1.firebasedatabase.app/terra/weatherData.json",
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                rainfall: data.rainfall,
+                windSpeed: data.windSpeed,
+                temperature: data.temperature,
+                humidity: data.humidity,
+                feelsLike: data.feelsLike,
+                location: data.location,
+                lastUpdated: new Date().toISOString()
+              }),
+              headers: { "Content-Type": "application/json" }
+            }
+          )
+        }
+      } catch (e) {
+        console.error("Weather sync failed:", e)
+      } finally {
+        setWeatherLoading(false)
+      }
     }
-  }
+
+    const initWeatherFetch = () => {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => fetchWeatherByLocation(pos.coords.latitude, pos.coords.longitude),
+          () => {
+            fetchWeatherByLocation(19.0760, 72.8777) // Mumbai Fallback
+            setUserLocation("Mumbai, IN (Fallback)")
+          }
+        )
+      } else {
+        fetchWeatherByLocation(19.0760, 72.8777)
+      }
+    }
+
+    initWeatherFetch()
+
+    // Refresh every 10 minutes
+    const interval = setInterval(initWeatherFetch, 10 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   const handleBroadcast = () => {
     if (!broadcastMsg.trim()) return
@@ -199,18 +251,24 @@ export default function DashboardPage() {
 
   const handleWeatherRefresh = async () => {
     setIsWeatherRefreshing(true)
-    try {
-      await fetch('/api/weather')
-      toast({
-        title: "Atmospheric Re-Sync",
-        description: "Live weather telemetry updated from satellite feed.",
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const res = await fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+        const data = await res.json()
+        if (data.rainfall !== undefined) {
+          setWeather(data)
+          toast({ title: "Atmospheric Re-Sync", description: "Telemetry updated for current location." })
+        }
+        setIsWeatherRefreshing(false)
+      }, () => {
+        setIsWeatherRefreshing(false)
       })
-    } catch (e) {}
-    setIsWeatherRefreshing(false)
+    } else {
+      setIsWeatherRefreshing(false)
+    }
   }
 
   const currentData = activeDisaster || MOCK_DISASTER
-  const sevConfig = getSeverityConfig(currentData.severity)
 
   // Unread CRITICAL alerts count
   const unreadCount = tacticalFeed.filter(
@@ -270,9 +328,12 @@ export default function DashboardPage() {
         <div className="flex items-center gap-6 pr-4">
           <div className="flex items-center gap-3">
              <div className="text-right">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Precipitation</div>
+                <div className="flex items-center justify-end gap-1.5 mb-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981] animate-pulse" />
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none">Precipitation</div>
+                </div>
                 <div className="text-lg font-mono font-bold text-primary leading-none">
-                  {weather?.rainfall || 0}mm/h
+                  {weatherLoading ? <Skeleton className="h-6 w-16" /> : `${weather?.rainfall || 0}mm/h`}
                 </div>
              </div>
              <CloudRain className="h-5 w-5 text-primary opacity-50" />
@@ -281,7 +342,7 @@ export default function DashboardPage() {
              <div className="text-right">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Wind Speed</div>
                 <div className="text-lg font-mono font-bold text-accent leading-none">
-                  {weather?.windSpeed || 0}km/h
+                  {weatherLoading ? <Skeleton className="h-6 w-16" /> : `${weather?.windSpeed || 0}km/h`}
                 </div>
              </div>
              <Wind className="h-5 w-5 text-accent opacity-50" />
@@ -290,15 +351,23 @@ export default function DashboardPage() {
              <div className="text-right">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Atmosphere</div>
                 <div className="text-lg font-mono font-bold text-amber-500 leading-none">
-                  {weather?.temperature || 0}°C
+                  {weatherLoading ? <Skeleton className="h-6 w-12 inline-block mr-1" /> : `${weather?.temperature || 0}°C`}
+                  <span className="text-[10px] ml-1 opacity-50">/ {weatherLoading ? <Skeleton className="h-3 w-8 inline-block" /> : `${weather?.humidity || 0}% RH`}</span>
                 </div>
              </div>
              <Thermometer className="h-5 w-5 text-amber-500 opacity-50" />
           </div>
           
+          <div className="flex flex-col items-end border-l border-white/10 pl-6">
+            <div className="text-[10px] font-black uppercase text-muted-foreground tracking-tighter opacity-60">Terminal Location</div>
+            <div className="text-xs font-bold text-white italic">
+              {weatherLoading ? <Skeleton className="h-4 w-24" /> : (userLocation || "Mumbai, IN")}
+            </div>
+          </div>
+          
           <div className="flex items-center gap-2 ml-2">
             <Button variant="ghost" size="icon" className="h-9 w-9 glass hover:bg-white/10" onClick={handleWeatherRefresh}>
-              <RefreshCw className={cn("h-4 w-4 text-muted-foreground", isWeatherRefreshing && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4 text-muted-foreground", (isWeatherRefreshing || weatherLoading) && "animate-spin")} />
             </Button>
             <Button 
               onClick={() => setIsBroadcastOpen(true)}

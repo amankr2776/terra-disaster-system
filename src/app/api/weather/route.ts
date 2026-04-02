@@ -1,54 +1,42 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const lat = 19.0760;
-    const lon = 72.8777;
-    const apiKey = process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY;
+    const { searchParams } = new URL(request.url)
+    const lat = searchParams.get("lat")
+    const lon = searchParams.get("lon")
 
+    if (!lat || !lon) {
+      return NextResponse.json({ error: "No coordinates provided" }, { status: 400 })
+    }
+
+    const apiKey = process.env.OPENWEATHER_API_KEY;
     if (!apiKey) {
-      throw new Error('OpenWeather API Key is missing');
+      return NextResponse.json({ error: "OpenWeather API Key missing" }, { status: 500 })
     }
 
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
-
-    const response = await fetch(url, { next: { revalidate: 60 } });
+    const res = await fetch(
+      `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`
+    )
     
-    if (!response.ok) {
-      throw new Error(`Weather API responded with ${response.status}`);
+    if (!res.ok) {
+      throw new Error(`Weather API responded with ${res.status}`);
     }
 
-    const data = await response.json();
+    const data = await res.json()
 
-    // OpenWeather provides wind speed in m/s when using units=metric. 
-    // Convert m/s to km/h: 1 m/s * 3.6 = 1 km/h
-    const windSpeedKmH = (data.wind.speed * 3.6).toFixed(1);
-    
-    // Rain info is optional in the response
-    const rainfall = data.rain ? `${data.rain['1h'] || 0}mm/h` : "0mm/h";
-
-    const weatherData = {
-      timestamp: new Date().toISOString(),
-      telemetry: {
-        rainfall: rainfall,
-        windSpeed: `${windSpeedKmH}km/h`,
-        temperature: `${data.main.temp.toFixed(1)}°C`,
-        humidity: `${data.main.humidity}%`,
-        pressure: `${data.main.pressure} hPa`
-      },
-      status: "Live Satellite Feed"
-    };
-
-    return NextResponse.json(weatherData);
-  } catch (error) {
-    console.error('Weather fetch error:', error);
-    return NextResponse.json({ 
-      error: "Failed to sync with weather satellite",
-      telemetry: {
-        rainfall: "N/A",
-        windSpeed: "N/A",
-        temperature: "N/A"
-      }
-    }, { status: 500 });
+    return NextResponse.json({
+      rainfall: data.rain?.["1h"] || 0,
+      windSpeed: Math.round((data.wind?.speed || 0) * 3.6), // m/s to km/h
+      temperature: Math.round(data.main?.temp || 0),
+      location: data.name,
+      country: data.sys?.country,
+      description: data.weather?.[0]?.description,
+      humidity: data.main?.humidity,
+      feelsLike: Math.round(data.main?.feels_like || 0)
+    })
+  } catch (error: any) {
+    console.error("API Weather Route Error:", error);
+    return NextResponse.json({ error: "Failed to sync with weather satellite" }, { status: 500 })
   }
 }
