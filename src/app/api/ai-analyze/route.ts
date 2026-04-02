@@ -1,104 +1,88 @@
-import { NextResponse } from 'next/server';
-import { database, ref, get, set, push, serverTimestamp, query, limitToLast } from "@/lib/firebase";
-import Groq from 'groq-sdk';
+import { NextResponse } from "next/server"
+import Groq from "groq-sdk"
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const DB_URL = "https://terra-digital-twin-default-rtdb.asia-southeast1.firebasedatabase.app"
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    const { type } = await req.json();
+    // Read from Firebase REST API
+    const [disasterRes, weatherRes, feedRes] = await Promise.all([
+      fetch(`${DB_URL}/terra/activeDisaster.json`),
+      fetch(`${DB_URL}/terra/weatherData.json`),
+      fetch(`${DB_URL}/terra/tacticalFeed.json`)
+    ])
 
-    // 1. Fetch Tactical Data from Firebase
-    const [disasterSnap, weatherSnap, feedSnap] = await Promise.all([
-      get(ref(database, 'terra/activeDisaster')),
-      get(ref(database, 'terra/weatherData')),
-      get(query(ref(database, 'terra/tacticalFeed'), limitToLast(5)))
-    ]);
+    const disaster = await disasterRes.json()
+    const weather = await weatherRes.json()
+    const feedRaw = await feedRes.json()
 
-    const disaster = disasterSnap.val() || {};
-    const weather = weatherSnap.val() || {};
-    const feed = feedSnap.val() || {};
+    const feedEntries = feedRaw
+      ? Object.values(feedRaw).slice(-5).map((e: any) => e.message).join("\n")
+      : "No recent entries"
 
-    // Format feed messages for the prompt
-    const feedMessages = Object.values(feed)
-      .map((m: any) => `[${m.priority}] ${m.message}`)
-      .join('\n');
-
-    // 2. Build Tactical Prompt
-    const systemPrompt = "You are TERRA's AI strategic commander. Analyze incoming disaster telemetry and produce structured tactical outputs. Be professional, concise, and clinical.";
-    
-    const userPrompt = `
-    LIVE DISASTER DATA:
-    Type: ${disaster.type || 'N/A'} | Severity: ${disaster.severity || 'N/A'}
-    Location: ${disaster.sector || 'N/A'}
-    Affected Population: ${disaster.affectedPopulation || 0}
-    Evacuation Progress: ${disaster.evacuationPercent || 0}%
-    
-    WEATHER:
-    Rainfall: ${weather.rainfall || 0}mm/hr | Wind: ${weather.windSpeed || 0}km/h | Temp: ${weather.temperature || 0}°C
-    
-    REQUEST TYPE: ${type.toUpperCase()}
-    
-    Generate a JSON response ONLY with:
-    {
-      "situationReport": "3-4 sentence summary of threat level and priorities",
-      "evacuationPlan": "Step-by-step evacuation protocol for this sector",
-      "resourceAllocation": "Specific breakdown of water, food, medical kits, and personnel needs",
-      "impactAnalysis": {
-        "affectedPopulation": number,
-        "waterRequired": number,
-        "foodRequired": number,
-        "medicalResources": number
-      },
-      "timelinePrediction": [
-        {"time": "T+1h", "event": "Event name", "riskLevel": "Level"}
-      ],
-      "aiNotification": "A single urgent notification for the tactical feed",
-      "aiNotificationPriority": "CRITICAL|WARNING|INFO",
-      "confidence": 94.2
-    }`;
-
-    // 3. Call Groq Intelligence
     const completion = await groq.chat.completions.create({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
       model: "llama-3.3-70b-versatile",
-      response_format: { type: "json_object" },
-    });
+      messages: [
+        {
+          role: "system",
+          content: "You are TERRA's AI disaster intelligence engine. Analyze incoming real-time disaster data and produce structured tactical outputs. Always respond with valid JSON only, no markdown, no extra text."
+        },
+        {
+          role: "user",
+          content: `
+LIVE DISASTER DATA:
+Type: ${disaster?.type} | Severity: ${disaster?.severity}
+Location: ${disaster?.sector}
+Affected Population: ${disaster?.affectedPopulation}
+Evacuation Progress: ${disaster?.evacuationPercent}%
+Infrastructure Capacity: ${disaster?.drainageCapacity}%
+Time to Critical: ${disaster?.minutesToInundation} min
 
-    const aiResult = JSON.parse(completion.choices[0]?.message?.content || "{}");
+WEATHER:
+Rainfall: ${weather?.rainfall}mm/hr | Wind: ${weather?.windSpeed}km/h | Temp: ${weather?.temperature}°C
 
-    // 4. Update Firebase with Intelligence
-    const analysisRef = ref(database, 'terra/aiAnalysis');
-    const feedRef = ref(database, 'terra/tacticalFeed');
+RECENT NOTIFICATIONS:
+${feedEntries}
 
-    // Merge new analysis with existing data to prevent data loss
-    const currentAnalysisSnap = await get(analysisRef);
-    const currentAnalysis = currentAnalysisSnap.val() || {};
+Return ONLY this JSON:
+{
+  "situationReport": "3-4 sentence tactical summary",
+  "evacuationPlan": "step by step evacuation instructions",
+  "resourceAllocation": "water/food/medical/personnel breakdown",
+  "aiNotification": "one urgent alert message for the tactical feed",
+  "aiNotificationPriority": "CRITICAL",
+  "confidence": 94.2
+}`
+        }
+      ]
+    })
 
-    const updatedAnalysis = {
-      ...currentAnalysis,
-      ...aiResult,
-      lastUpdated: serverTimestamp()
-    };
+    const raw = completion.choices[0].message.content || ""
+    const clean = raw.replace(/```json|```/g, "").trim()
+    const parsed = JSON.parse(clean)
 
-    await Promise.all([
-      set(analysisRef, updatedAnalysis),
-      push(feedRef, {
-        message: aiResult.aiNotification || `AI Intelligence Sync: ${type.toUpperCase()} updated.`,
-        priority: aiResult.aiNotificationPriority || "INFO",
-        timestamp: new Date().toISOString(),
-        source: "ai"
-      })
-    ]);
+    // Write analysis back to Firebase REST API
+    await fetch(`${DB_URL}/terra/aiAnalysis.json`, {
+      method: "PUT",
+      body: JSON.stringify({ ...parsed, lastUpdated: new Date().toISOString() }),
+      headers: { "Content-Type": "application/json" }
+    })
 
-    return NextResponse.json({ success: true, analysis: updatedAnalysis });
+    // Push AI notification to tacticalFeed
+    await fetch(`${DB_URL}/terra/tacticalFeed.json`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: parsed.aiNotification,
+        priority: parsed.aiNotificationPriority,
+        source: "ai",
+        timestamp: new Date().toISOString()
+      }),
+      headers: { "Content-Type": "application/json" }
+    })
+
+    return NextResponse.json({ success: true, data: parsed })
   } catch (error: any) {
-    console.error('AI Analysis Pipeline Error:', error);
-    return NextResponse.json({ error: error.message || "Intelligence sync failed" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

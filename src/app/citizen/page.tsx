@@ -28,8 +28,6 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { database, ref, onValue } from "@/lib/firebase"
 
-type ThreatLevel = 'safe' | 'warning' | 'high' | 'critical' | 'MODERATE' | 'LOW' | 'HIGH' | 'CRITICAL';
-
 export default function CitizenPortalPage() {
   const [activeDisaster, setActiveDisaster] = useState<any>(null)
   const [warnings, setWarnings] = useState<any[]>([])
@@ -44,7 +42,7 @@ export default function CitizenPortalPage() {
   useEffect(() => {
     document.title = "TERRA | Citizen Protection";
     
-    // 1. Geolocation Logic
+    // 1. Geolocation Sync Logic
     const savedLocation = localStorage.getItem('terra_user_location')
     if (savedLocation) {
       setUserLocation(savedLocation)
@@ -67,7 +65,6 @@ export default function CitizenPortalPage() {
           id,
           ...val
         }))
-        // Filter for Critical/Warning and take top 3
         const highPriority = feedArray
           .filter(m => m.priority === 'CRITICAL' || m.priority === 'WARNING')
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -182,7 +179,6 @@ export default function CitizenPortalPage() {
   return (
     <div className="max-w-md mx-auto space-y-8 pb-32 pt-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
       
-      {/* 1. Threat Level Banner */}
       <div className={`${config.bg} text-white p-6 rounded-2xl shadow-2xl space-y-4 border-b-4 border-black/20`}>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between mb-2">
@@ -240,7 +236,6 @@ export default function CitizenPortalPage() {
         </p>
       </div>
 
-      {/* 2. Active Warnings */}
       <div className="space-y-3">
         <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-2">
           <AlertCircle className="h-3 w-3" />
@@ -269,7 +264,6 @@ export default function CitizenPortalPage() {
         </div>
       </div>
 
-      {/* 3. Small Map */}
       <div className="space-y-3">
         <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-2">
           <MapPin className="h-3 w-3" />
@@ -290,7 +284,6 @@ export default function CitizenPortalPage() {
         </div>
       </div>
 
-      {/* 4. Evacuation Routes */}
       <div className="space-y-3">
         <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-2">
           <Navigation className="h-3 w-3" />
@@ -318,7 +311,6 @@ export default function CitizenPortalPage() {
         </div>
       </div>
 
-      {/* 5. Relief Camps */}
       <div className="space-y-3">
         <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1 flex items-center gap-2">
           <Tent className="h-3 w-3" />
@@ -381,7 +373,6 @@ export default function CitizenPortalPage() {
         </div>
       </div>
 
-      {/* 6. Emergency Button (Fixed) */}
       <div className="fixed bottom-6 left-0 right-0 px-6 z-50">
         <Button className="w-full h-16 text-lg font-black bg-destructive hover:bg-destructive/90 text-white rounded-2xl shadow-2xl gap-3 border-4 border-white/10 animate-bounce">
           <Phone className="h-6 w-6" />
@@ -389,7 +380,6 @@ export default function CitizenPortalPage() {
         </Button>
       </div>
 
-      {/* Quick Footer Info */}
       <div className="text-center pb-8 opacity-40 space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-widest">TERRA Citizen Protection Grid • v2.1</p>
         <div className="flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-primary">

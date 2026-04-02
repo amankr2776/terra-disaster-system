@@ -1,32 +1,10 @@
 import { NextResponse } from "next/server"
-import { initializeApp, getApps, getApp } from "firebase/app"
-import { getDatabase, ref, set } from "firebase/database"
 
-/**
- * @fileOverview Seeding endpoint for Firebase Realtime Database.
- * 
- * This route allows for a one-click initialization of the tactical disaster 
- * intelligence grid.
- */
+const DB_URL = "https://terra-digital-twin-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 export async function GET() {
   try {
-    const firebaseConfig = {
-      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-      authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-      databaseURL: "https://terra-digital-twin-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    }
-
-    // Initialize Firebase in the API context
-    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
-    const db = getDatabase(app)
-
-    // Seed the 'terra' node with a structured Mumbai flood scenario
-    await set(ref(db, "terra"), {
+    const data = {
       activeDisaster: {
         type: "flood",
         severity: "CRITICAL",
@@ -70,12 +48,26 @@ export async function GET() {
       evacRoutes: {
         route1: { name: "GST Road Exit", status: "clear" },
         route2: { name: "Highway 17 North", status: "clear" }
+      },
+      settings: {
+        simulationSpeed: 1,
+        rainfallThreshold: 15,
+        criticalBroadcaster: true,
+        satelliteFidelity: true,
+        primarySector: "Sector 4, Mumbai"
       }
+    }
+
+    const res = await fetch(`${DB_URL}/terra.json`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" }
     })
+
+    if (!res.ok) throw new Error(`Firebase REST error: ${res.status}`)
 
     return NextResponse.json({ success: true, message: "Firebase seeded successfully" })
   } catch (error: any) {
-    console.error("Seeding Error:", error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

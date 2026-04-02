@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -41,12 +40,7 @@ export function Header() {
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [lastReadTime, setLastReadTime] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return parseInt(localStorage.getItem('terra_last_read_notif') || '0');
-    }
-    return 0;
-  });
+  const [lastReadTime, setLastReadTime] = useState<number>(0);
 
   const fetchWeather = async () => {
     setLoading(true);
@@ -64,21 +58,25 @@ export function Header() {
   };
 
   useEffect(() => {
+    // Sync localStorage values after mount
+    const savedName = localStorage.getItem('terra_commander_name');
+    if (savedName) setCommanderName(savedName);
+    
+    const savedReadTime = parseInt(localStorage.getItem('terra_last_read_notif') || '0');
+    setLastReadTime(savedReadTime);
+
     fetchWeather();
     
-    // 1. Firebase Connection Listener
     const connectedRef = ref(database, ".info/connected")
     const unsubConnection = onValue(connectedRef, (snap) => {
       setIsOnline(!!snap.val())
     })
 
-    // 2. Settings Listener
     const sectorRef = ref(database, 'terra/settings/primarySector')
     const unsubSector = onValue(sectorRef, (snap) => {
       if (snap.exists()) setActiveSector(snap.val())
     })
 
-    // 3. Tactical Feed Listener for Notifications
     const feedRef = ref(database, 'terra/tacticalFeed')
     const unsubFeed = onValue(feedRef, (snapshot) => {
       const data = snapshot.val()
@@ -99,10 +97,6 @@ export function Header() {
         setUnreadCount(unread)
       }
     })
-
-    // 4. Commander Name Logic
-    const savedName = localStorage.getItem('terra_commander_name');
-    if (savedName) setCommanderName(savedName);
 
     return () => {
       unsubConnection();
@@ -140,7 +134,6 @@ export function Header() {
 
   return (
     <header className="h-16 border-b border-white/10 bg-background/40 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-300">
-      {/* Left: Branding & Status */}
       <div className="flex items-center gap-4">
         <SidebarTrigger className="hover:bg-white/10" />
         <div className="flex items-center gap-2 mr-2">
@@ -169,7 +162,6 @@ export function Header() {
         </div>
       </div>
 
-      {/* Center: Weather Telemetry */}
       <div className="hidden md:flex items-center gap-6 glass px-4 py-1.5 rounded-full border-white/5">
         <div className="flex items-center gap-2 group cursor-default">
           <CloudRain className="h-3.5 w-3.5 text-primary group-hover:scale-110 transition-transform" />
@@ -199,7 +191,6 @@ export function Header() {
         </Button>
       </div>
 
-      {/* Right: Actions & Profile */}
       <div className="flex items-center gap-4">
         <DropdownMenu onOpenChange={(open) => open && handleMarkAsRead()}>
           <DropdownMenuTrigger asChild>
@@ -276,7 +267,6 @@ export function Header() {
         </DropdownMenu>
       </div>
 
-      {/* Commander Registration Dialog */}
       <Dialog open={isNameDialogOpen} onOpenChange={setIsNameDialogOpen}>
         <DialogContent className="glass-card sm:max-w-[425px] border-primary/20">
           <DialogHeader>
