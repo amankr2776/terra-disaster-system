@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -71,13 +70,13 @@ export default function DashboardPage() {
   const [lastReadTime, setLastReadTime] = useState<number>(Date.now())
   const [isWeatherRefreshing, setIsWeatherRefreshing] = useState(false)
 
+  // Effect 1: Firebase listeners — runs ONCE only
   useEffect(() => {
     document.title = "TERRA | Command Center"
 
     const loadTimeout = setTimeout(() => {
       setLoading(false)
-      setIsTimedOut(true)
-    }, 5000)
+    }, 8000)
 
     const connectedRef = ref(database, '.info/connected')
     const unsubSystem = onValue(connectedRef, (snap) => {
@@ -85,78 +84,83 @@ export default function DashboardPage() {
     })
 
     const settingsRef = ref(database, 'terra/settings')
-    onValue(settingsRef, (snap) => {
-      setSettings(snap.val())
+    const unsubSettings = onValue(settingsRef, (snap) => {
+      if (snap.exists()) setSettings(snap.val())
     })
 
     const disasterRef = ref(database, 'terra/activeDisaster')
-    const unsubscribeDisaster = onValue(disasterRef, (snapshot) => {
+    const unsubDisaster = onValue(disasterRef, (snapshot) => {
+      setLoading(false)
+      clearTimeout(loadTimeout)
       if (snapshot.exists()) {
         setActiveDisaster(snapshot.val())
         setIsConnected(true)
         setIsTimedOut(false)
-        setLoading(false)
-        clearTimeout(loadTimeout)
-      } else {
-        setIsConnected(false)
       }
+    }, (error) => {
+      console.error('Firebase error:', error)
+      setLoading(false)
+      clearTimeout(loadTimeout)
     })
 
     const weatherRef = ref(database, 'terra/weatherData')
-    const unsubscribeWeather = onValue(weatherRef, (snapshot) => {
-      const weatherData = snapshot.val()
-      if (weatherData) {
-        setWeather(weatherData)
-        
-        // Automated Rainfall Warning System
-        if (settings?.rainfallThreshold && weatherData.rainfall > settings.rainfallThreshold) {
-          const lastWarningTime = parseInt(localStorage.getItem('terra_last_rainfall_warning') || '0')
-          const now = Date.now()
-          
-          // Only warn once every 30 minutes
-          if (now - lastWarningTime > 30 * 60 * 1000) {
-            push(ref(database, 'terra/tacticalFeed'), {
-              message: `AUTOMATED ALERT: Rainfall exceeds tactical threshold (${weatherData.rainfall}mm/h > ${settings.rainfallThreshold}mm/h). Sector risk escalating.`,
-              priority: "WARNING",
-              source: "ai",
-              timestamp: new Date().toISOString()
-            })
-            localStorage.setItem('terra_last_rainfall_warning', now.toString())
-          }
-        }
-      }
+    const unsubWeather = onValue(weatherRef, (snapshot) => {
+      if (snapshot.exists()) setWeather(snapshot.val())
     })
 
     const feedRef = ref(database, 'terra/tacticalFeed')
-    const unsubscribeFeed = onValue(feedRef, (snapshot) => {
+    const unsubFeed = onValue(feedRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {
         const feedArray = Object.entries(data).map(([id, val]: [string, any]) => ({
           id,
           ...val
         }))
-        feedArray.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        
-        // Critical Broadcaster Support
-        const latest = feedArray[0]
-        if (latest && settings?.criticalBroadcaster && latest.priority === 'CRITICAL' && new Date(latest.timestamp).getTime() > lastReadTime) {
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification("TERRA CRITICAL ALERT", { body: latest.message })
-          }
-        }
-
+        feedArray.sort((a, b) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )
         setTacticalFeed(feedArray.slice(0, 10))
       }
     })
 
     return () => {
-      unsubscribeDisaster()
-      unsubscribeWeather()
-      unsubscribeFeed()
+      unsubDisaster()
+      unsubWeather()
+      unsubFeed()
       unsubSystem()
+      unsubSettings()
       clearTimeout(loadTimeout)
     }
-  }, [settings, lastReadTime])
+  }, [])
+
+  // Effect 2: Automated rainfall warning
+  useEffect(() => {
+    if (!weather || !settings?.rainfallThreshold) return
+    if (weather.rainfall <= settings.rainfallThreshold) return
+
+    const lastWarningTime = parseInt(localStorage.getItem('terra_last_rainfall_warning') || '0')
+    const now = Date.now()
+    if (now - lastWarningTime < 30 * 60 * 1000) return
+
+    push(ref(database, 'terra/tacticalFeed'), {
+      message: `AUTOMATED ALERT: Rainfall exceeds tactical threshold (${weather.rainfall}mm/h > ${settings.rainfallThreshold}mm/h). Sector risk escalating.`,
+      priority: "WARNING",
+      source: "ai",
+      timestamp: new Date().toISOString()
+    })
+    localStorage.setItem('terra_last_rainfall_warning', now.toString())
+  }, [weather, settings])
+
+  // Effect 3: Critical browser notification
+  useEffect(() => {
+    if (!tacticalFeed.length || !settings?.criticalBroadcaster) return
+    const latest = tacticalFeed[0]
+    if (!latest || latest.priority !== 'CRITICAL') return
+    if (new Date(latest.timestamp).getTime() <= lastReadTime) return
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("TERRA CRITICAL ALERT", { body: latest.message })
+    }
+  }, [tacticalFeed, settings, lastReadTime])
 
   const getSeverityConfig = (severity: string) => {
     switch (severity?.toUpperCase()) {
@@ -228,12 +232,12 @@ export default function DashboardPage() {
     <div className="flex flex-col h-[calc(100vh-theme(spacing.24))] gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 overflow-hidden">
       
       {/* Offline Alert Banner */}
-      {(!isConnected || isTimedOut || !systemOnline) && (
+      {!systemOnline && (
         <div className="bg-destructive/20 border border-destructive/30 px-4 py-2 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <WifiOff className="h-4 w-4 text-destructive" />
             <span className="text-[10px] font-black uppercase tracking-widest text-destructive">
-              {!systemOnline ? "SYSTEM: OFFLINE — Waiting for Satellite Link" : "Neural Link Fragmented — Displaying Cached/Standby Data"}
+              SYSTEM: OFFLINE — Waiting for Satellite Link
             </span>
           </div>
           <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold text-destructive hover:bg-destructive/10" onClick={() => window.location.reload()}>
