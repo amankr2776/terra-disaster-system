@@ -1,6 +1,7 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
+  // Ensure we are using standard SSR (not 'export')
   typescript: {
     ignoreBuildErrors: true,
   },
