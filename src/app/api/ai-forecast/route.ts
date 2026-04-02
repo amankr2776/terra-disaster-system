@@ -1,24 +1,24 @@
 import { NextResponse } from 'next/server';
-import { database, ref, get, set, serverTimestamp } from "@/lib/firebase";
 import Groq from 'groq-sdk';
 
+const DB_URL = "https://terra-digital-twin-default-rtdb.asia-southeast1.firebasedatabase.app";
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
 export async function POST() {
   try {
-    // 1. Fetch live telemetry from Firebase
-    const [disasterSnap, weatherSnap] = await Promise.all([
-      get(ref(database, 'terra/activeDisaster')),
-      get(ref(database, 'terra/weatherData'))
+    // 1. Fetch live telemetry from Firebase via REST
+    const [disasterRes, weatherRes] = await Promise.all([
+      fetch(`${DB_URL}/terra/activeDisaster.json`),
+      fetch(`${DB_URL}/terra/weatherData.json`)
     ]);
 
-    const disaster = disasterSnap.val() || {};
-    const weather = weatherSnap.val() || {};
+    const disaster = await disasterRes.json() || {};
+    const weather = await weatherRes.json() || {};
 
     // 2. Build the Strategic Prediction Prompt
-    const systemPrompt = "You are a TERRA disaster prediction AI. Analyze the provided telemetry and generate a structured 6-hour forecast. Be clinical, precise, and professional.";
+    const systemPrompt = "You are a TERRA disaster prediction AI. Analyze the provided telemetry and generate a structured 6-hour forecast. Be clinical, precise, and professional. Always respond with valid JSON only.";
     
     const userPrompt = `
     LIVE TELEMETRY:
@@ -30,7 +30,7 @@ export async function POST() {
     ATMOSPHERICS:
     Rainfall: ${weather.rainfall || 0}mm/h | Wind: ${weather.windSpeed || 0}km/h | Temp: ${weather.temperature || 0}°C
     
-    Generate a JSON response ONLY with:
+    Return ONLY this JSON structure:
     {
       "summary": "Detailed 3-4 sentence predictive summary",
       "modelFidelity": 98.4,
@@ -66,16 +66,20 @@ export async function POST() {
       response_format: { type: "json_object" },
     });
 
-    const forecastData = JSON.parse(completion.choices[0]?.message?.content || "{}");
+    const raw = completion.choices[0]?.message?.content || "{}";
+    const forecastData = JSON.parse(raw);
 
-    // 4. Sync to Firebase
-    const forecastRef = ref(database, 'terra/forecast');
+    // 4. Sync to Firebase via REST
     const updatedData = {
       ...forecastData,
-      lastUpdated: serverTimestamp()
+      lastUpdated: new Date().toISOString()
     };
     
-    await set(forecastRef, updatedData);
+    await fetch(`${DB_URL}/terra/forecast.json`, {
+      method: "PUT",
+      body: JSON.stringify(updatedData),
+      headers: { "Content-Type": "application/json" }
+    });
 
     return NextResponse.json(updatedData);
   } catch (error: any) {

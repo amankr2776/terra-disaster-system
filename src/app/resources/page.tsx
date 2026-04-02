@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { TerraMap } from "@/components/map/TerraMap"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
-import { database, ref, onValue, set, push, serverTimestamp, get } from "@/lib/firebase"
+import { database, ref, onValue, set, push, serverTimestamp } from "@/lib/firebase"
 import {
   Dialog,
   DialogContent,
@@ -117,7 +117,7 @@ export default function ResourcesPage() {
       const catUnits = units.filter(u => u.type === cat.id)
       const deployed = catUnits.filter(u => u.status === 'Deployed' || u.status === 'En Route' || u.status === 'Full').length
       const available = catUnits.filter(u => u.status === 'Available').length
-      const capacity = Math.max(catUnits.length, 10) // Mock capacity logic or driven by data
+      const capacity = Math.max(catUnits.length, 10)
       
       let status = "Optimal"
       if (deployed / capacity > 0.8) status = "Critical"
@@ -177,8 +177,9 @@ export default function ResourcesPage() {
   const updateUnitStatus = async (unitId: string, newStatus: string) => {
     try {
       const unitRef = ref(database, `terra/resources/units/${unitId}`)
+      const unit = units.find(u => u.id === unitId)
       await set(unitRef, {
-        ...units.find(u => u.id === unitId),
+        ...unit,
         status: newStatus,
         load: newStatus === 'Full' || newStatus === 'Deployed' ? 100 : newStatus === 'Available' ? 0 : 45
       })
@@ -205,7 +206,6 @@ export default function ResourcesPage() {
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {/* Page Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/20 rounded-lg border border-primary/30">
@@ -230,7 +230,6 @@ export default function ResourcesPage() {
         </div>
       </div>
 
-      {/* Resource Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {categoryStats.map((cat) => (
           <Card key={cat.id} className="glass-card hover:bg-white/5 transition-all group overflow-hidden border-t-2 border-t-white/5">
@@ -285,10 +284,7 @@ export default function ResourcesPage() {
         ))}
       </div>
 
-      {/* Secondary Grid: Searchable List and Map */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 pb-12">
-        
-        {/* Inventory List / Manual Override */}
         <div className="lg:col-span-4 flex flex-col min-h-0">
           <Card className="glass-card flex-1 overflow-hidden flex flex-col border border-white/5 shadow-2xl">
             <CardHeader className="pb-4 border-b border-white/5 bg-white/5">
@@ -390,14 +386,13 @@ export default function ResourcesPage() {
           </Card>
         </div>
 
-        {/* Tactical Resource Map */}
         <div className="lg:col-span-8 relative rounded-xl overflow-hidden border border-white/10 shadow-2xl">
           <TerraMap 
             center={[72.8777, 19.0760]}
             zoom={12}
             markers={filteredUnits.map(u => ({
               id: u.id,
-              coordinates: [72.8777 + (Math.random() - 0.5) * 0.1, 19.0760 + (Math.random() - 0.5) * 0.1], // Mock scattering for demo
+              coordinates: [72.8777 + (Math.random() - 0.5) * 0.05, 19.0760 + (Math.random() - 0.5) * 0.05],
               type: u.type === 'Relief Camp' ? 'shelter' : 'resource',
               label: u.name,
               severity: u.load > 80 ? 'high' : 'low'
@@ -409,13 +404,12 @@ export default function ResourcesPage() {
                 <span className="text-[10px] font-black uppercase italic tracking-widest text-emerald-500">Grid Stability: Optimal</span>
              </div>
              <p className="text-[10px] leading-relaxed text-muted-foreground font-medium italic">
-                All high-priority assets currently synced with <span className="text-primary font-bold">Neural Link X-44</span>. Real-time telemetry established for {units.length} units.
+                All high-priority assets currently synced with Neural Link. Real-time telemetry established for {units.length} units.
              </p>
           </div>
         </div>
       </div>
 
-      {/* Deploy Asset Modal */}
       <Dialog open={isDeployOpen} onOpenChange={setIsDeployOpen}>
         <DialogContent className="glass-card sm:max-w-[450px] border-primary/20">
           <DialogHeader>
@@ -469,7 +463,6 @@ export default function ResourcesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Reset Grid Dialog */}
       <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
         <DialogContent className="glass-card sm:max-w-[400px] border-destructive/20">
           <DialogHeader>
@@ -478,7 +471,7 @@ export default function ResourcesPage() {
               Neural Reset Protocol
             </DialogTitle>
             <DialogDescription className="text-xs font-medium italic pt-2">
-              This will purge all custom deployments and revert the resource grid to central command baseline. This action cannot be undone.
+              This will purge all custom deployments and revert the resource grid to default baseline.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="pt-4">
@@ -489,7 +482,6 @@ export default function ResourcesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   )
 }

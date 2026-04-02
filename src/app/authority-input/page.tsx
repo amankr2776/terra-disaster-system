@@ -32,6 +32,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 
+const DB_URL = "https://terra-digital-twin-default-rtdb.asia-southeast1.firebasedatabase.app";
+
 export default function AuthorityInputPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -132,35 +134,31 @@ export default function AuthorityInputPage() {
     setCamps(newCamps)
   }
 
-  const saveCamps = async () => {
-    try {
-      const campsRef = ref(database, 'terra/reliefCamps')
-      await set(campsRef, camps)
-      toast({ title: "Camps Updated", description: "Relief camp inventory synchronized." })
-    } catch (error) {
-      console.error(error)
-      toast({ variant: "destructive", title: "Save Failed" })
-    }
-  }
-
   const pushLiveUpdate = async () => {
     setIsUpdating(true)
     try {
-      // 1. Update Active Disaster
-      const disasterRef = ref(database, 'terra/activeDisaster')
-      await set(disasterRef, {
-        ...disaster,
-        lastUpdated: serverTimestamp()
-      })
+      // 1. Update everything via REST PUT for atomic-like consistency
+      const timestamp = new Date().toISOString()
+      
+      await Promise.all([
+        fetch(`${DB_URL}/terra/activeDisaster.json`, {
+          method: "PUT",
+          body: JSON.stringify({ ...disaster, lastUpdated: timestamp }),
+          headers: { "Content-Type": "application/json" }
+        }),
+        fetch(`${DB_URL}/terra/weatherData.json`, {
+          method: "PUT",
+          body: JSON.stringify({ ...weather, lastUpdated: timestamp }),
+          headers: { "Content-Type": "application/json" }
+        }),
+        fetch(`${DB_URL}/terra/reliefCamps.json`, {
+          method: "PUT",
+          body: JSON.stringify(camps),
+          headers: { "Content-Type": "application/json" }
+        })
+      ])
 
-      // 2. Update Weather Data
-      const weatherRef = ref(database, 'terra/weatherData')
-      await set(weatherRef, {
-        ...weather,
-        lastUpdated: serverTimestamp()
-      })
-
-      // 3. Trigger AI Analysis
+      // 2. Trigger AI Analysis
       await fetch('/api/ai-analyze', { method: 'POST' })
 
       toast({
@@ -232,7 +230,6 @@ export default function AuthorityInputPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Section 1: Active Disaster */}
         <Card className="glass-card border-t-4 border-t-destructive">
           <CardHeader className="pb-4 border-b border-white/5 bg-white/5">
             <CardTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-destructive">
@@ -330,7 +327,6 @@ export default function AuthorityInputPage() {
         </Card>
 
         <div className="space-y-8">
-          {/* Section 2: Weather Data */}
           <Card className="glass-card border-t-4 border-t-primary">
             <CardHeader className="pb-4 border-b border-white/5 bg-white/5">
               <CardTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-primary">
@@ -369,40 +365,6 @@ export default function AuthorityInputPage() {
             </CardContent>
           </Card>
 
-          {/* Section 3: Post Notification */}
-          <Card className="glass-card border-t-4 border-t-amber-500">
-            <CardHeader className="pb-4 border-b border-white/5 bg-white/5">
-              <CardTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-amber-500">
-                <Bell className="h-4 w-4" />
-                Broadcast Tactical Notification
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-6">
-              <Textarea 
-                placeholder="Enter critical instruction or status update..."
-                value={notification.message}
-                onChange={(e) => setNotification({ ...notification, message: e.target.value })}
-                className="bg-white/5 border-white/10 h-24 text-sm font-medium"
-              />
-              <div className="flex gap-4">
-                <Select value={notification.priority} onValueChange={(v) => setNotification({ ...notification, priority: v })}>
-                  <SelectTrigger className="bg-white/5 border-white/10 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CRITICAL">CRITICAL</SelectItem>
-                    <SelectItem value="WARNING">WARNING</SelectItem>
-                    <SelectItem value="INFO">INFO</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button onClick={broadcastNotification} className="bg-amber-500 hover:bg-amber-600 font-bold uppercase text-[10px] tracking-widest px-8">
-                  BROADCAST
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Section 4: Relief Camps */}
           <Card className="glass-card border-t-4 border-t-emerald-500">
             <CardHeader className="pb-4 border-b border-white/5 bg-white/5 flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-500">
@@ -412,9 +374,6 @@ export default function AuthorityInputPage() {
               <div className="flex gap-2">
                 <Button variant="outline" size="icon" onClick={addCamp} className="h-7 w-7 glass border-emerald-500/30 text-emerald-500">
                   <Plus className="h-3 w-3" />
-                </Button>
-                <Button variant="outline" size="icon" onClick={saveCamps} className="h-7 w-7 glass border-emerald-500/30 text-emerald-500">
-                  <Save className="h-3 w-3" />
                 </Button>
               </div>
             </CardHeader>
@@ -468,9 +427,6 @@ export default function AuthorityInputPage() {
                   </Button>
                 </div>
               ))}
-              {camps.length === 0 && (
-                <p className="text-[10px] text-muted-foreground italic text-center py-4">No active relief camps defined.</p>
-              )}
             </CardContent>
           </Card>
         </div>

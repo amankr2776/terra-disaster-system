@@ -34,29 +34,23 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 
-const FALLBACK_FORECAST = {
-  summary: "Establishing neural link to tactical nodes. Satellite telemetry sync in progress...",
-  modelFidelity: 94.2,
-  primaryRisk: "Atmospheric Instability",
-  targetZone: "Coastal Sector 4",
-  immediateAction: "Initiate standard drainage monitoring protocols.",
-  hourlyForecast: [
-    { hour: "Now", rainfall: 8, severity: "Warning", predictedSeverityPercent: 45, temperature: 24, windSpeed: 12, drainageLoad: 40, evacuationUrgency: "LOW" },
-    { hour: "+1hr", rainfall: 15, severity: "High", predictedSeverityPercent: 82, temperature: 22, windSpeed: 18, drainageLoad: 65, evacuationUrgency: "MODERATE" },
-    { hour: "+2hr", rainfall: 20, severity: "Critical", predictedSeverityPercent: 94, temperature: 21, windSpeed: 25, drainageLoad: 92, evacuationUrgency: "HIGH" },
-    { hour: "+3hr", rainfall: 12, severity: "High", predictedSeverityPercent: 70, temperature: 22, windSpeed: 20, drainageLoad: 80, evacuationUrgency: "HIGH" },
-    { hour: "+4hr", rainfall: 4, severity: "Warning", predictedSeverityPercent: 30, temperature: 23, windSpeed: 15, drainageLoad: 50, evacuationUrgency: "MODERATE" },
-    { hour: "+6hr", rainfall: 1, severity: "Low", predictedSeverityPercent: 15, temperature: 24, windSpeed: 10, drainageLoad: 20, evacuationUrgency: "LOW" },
-  ]
+const INITIAL_FORECAST = {
+  summary: "Awaiting neural projection. Synchronize AI Forecast to generate tactical timeline.",
+  modelFidelity: 0,
+  primaryRisk: "Standby",
+  targetZone: "Standby",
+  immediateAction: "Monitoring",
+  hourlyForecast: []
 }
 
 export default function ForecastPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [forecast, setForecast] = useState<any>(FALLBACK_FORECAST)
+  const [forecast, setForecast] = useState<any>(INITIAL_FORECAST)
   const [expandedCard, setExpandedCard] = useState<number | null>(0)
   const [isProtocolOpen, setIsProtocolOpen] = useState(false)
   const [activeDisaster, setActiveDisaster] = useState<any>(null)
+  const [weather, setWeather] = useState<any>(null)
 
   useEffect(() => {
     document.title = "TERRA | Forecast Projection";
@@ -68,12 +62,18 @@ export default function ForecastPage() {
 
     const disasterRef = ref(database, 'terra/activeDisaster')
     const unsubDisaster = onValue(disasterRef, (snapshot) => {
-      setActiveDisaster(snapshot.val())
+      if (snapshot.exists()) setActiveDisaster(snapshot.val())
+    })
+
+    const weatherRef = ref(database, 'terra/weatherData')
+    const unsubWeather = onValue(weatherRef, (snapshot) => {
+      if (snapshot.exists()) setWeather(snapshot.val())
     })
 
     return () => {
       unsubForecast()
       unsubDisaster()
+      unsubWeather()
     }
   }, [])
 
@@ -100,7 +100,7 @@ export default function ForecastPage() {
 
   const generateProtocols = (action: string) => {
     return [
-      `Analyze: ${action}`,
+      `Analyze Action Directive: ${action}`,
       "Deploy rapid response units to marked target zones.",
       "Activate local drainage bypass mechanisms.",
       "Broadcast evacuation directives to citizen nodes.",
@@ -116,6 +116,8 @@ export default function ForecastPage() {
       default: return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
     }
   }
+
+  const timelineData = forecast.hourlyForecast || []
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -157,23 +159,27 @@ export default function ForecastPage() {
               <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Primary Risk Vector</span>
               <div className="flex items-center gap-2 text-xl font-black text-destructive uppercase italic">
                 <AlertTriangle className="h-5 w-5" />
-                {forecast.primaryRisk || "Monitoring"}
+                {forecast.primaryRisk || activeDisaster?.type || "Standby"}
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">Predicted severity peaked at <span className="text-white font-bold">{Math.max(...forecast.hourlyForecast.map((h:any) => h.predictedSeverityPercent || 0))}%</span> over horizon.</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">
+                {timelineData.length > 0 
+                  ? `Predicted severity peaked at ${Math.max(...timelineData.map((h:any) => h.predictedSeverityPercent || 0))}% over horizon.`
+                  : "Sync AI to analyze severity peaks."}
+              </p>
             </div>
             <div className="space-y-3">
               <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Target Zone</span>
               <div className="text-xl font-black text-white flex items-center gap-2 uppercase italic">
                 <Globe className="h-5 w-5 text-primary opacity-50" />
-                {forecast.targetZone || "Global"}
+                {forecast.targetZone || activeDisaster?.sector || "Global"}
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">Impact sensitivity calibrated for <span className="text-white font-bold">Density Group 4</span>.</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">Impact sensitivity calibrated for tactical basin profile.</p>
             </div>
             <div className="space-y-3">
               <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest opacity-60">Immediate Action</span>
               <div className="text-xl font-black text-accent flex items-center gap-2 uppercase italic">
                 <ShieldAlert className="h-5 w-5 opacity-50" />
-                {forecast.immediateAction || "Standby"}
+                {forecast.immediateAction || "Monitoring"}
               </div>
               <Button 
                 variant="link" 
@@ -190,16 +196,16 @@ export default function ForecastPage() {
       {/* Center: Map Prediction View */}
       <div className="flex-1 relative min-h-[350px] rounded-xl overflow-hidden border border-white/10 shadow-2xl group">
         <TerraMap 
-          center={activeDisaster?.sector?.includes('Mumbai') ? [72.8777, 19.0760] : [77.5946, 12.9716]}
+          center={activeDisaster?.sector?.includes('Mumbai') ? [72.8777, 19.0760] : [72.8777, 19.0760]}
           zoom={12}
           markers={[
-            { id: 'p1', coordinates: activeDisaster?.sector?.includes('Mumbai') ? [72.8777, 19.0760] : [77.5946, 12.9716], type: 'incident', severity: 'high', label: forecast.targetZone }
+            { id: 'p1', coordinates: [72.8777, 19.0760], type: 'incident', severity: 'high', label: forecast.targetZone || activeDisaster?.sector || 'Active Sector' }
           ]}
         />
         <div className="absolute top-4 left-4 glass p-4 rounded-xl border-white/10 z-10 max-w-xs space-y-2 pointer-events-none transition-all duration-500">
           <div className="text-[10px] font-black uppercase text-primary tracking-widest">Model Projection Detail</div>
           <p className="text-[11px] leading-relaxed text-muted-foreground font-medium italic">
-            The {forecast.primaryRisk} vector is projected to intensify along the {forecast.targetZone} basin within the next 120 minutes.
+            {forecast.summary}
           </p>
         </div>
       </div>
@@ -213,13 +219,13 @@ export default function ForecastPage() {
           </h3>
           <Badge className="bg-emerald-500/10 border-emerald-500/20 text-emerald-500 text-[9px] gap-1.5 px-3 font-bold">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            NEURAL PROJECTION ACTIVE
+            {timelineData.length > 0 ? "NEURAL PROJECTION ACTIVE" : "AWAITING SYNC"}
           </Badge>
         </div>
         
         <ScrollArea className="w-full whitespace-nowrap pb-4">
           <div className="flex gap-4">
-            {forecast.hourlyForecast.map((item: any, i: number) => {
+            {timelineData.length > 0 ? timelineData.map((item: any, i: number) => {
               const isActive = expandedCard === i;
               return (
                 <Card 
@@ -263,7 +269,6 @@ export default function ForecastPage() {
                       <Progress value={item.predictedSeverityPercent} className={`h-1 ${item.predictedSeverityPercent > 80 ? '[&>div]:bg-destructive' : ''}`} />
                     </div>
 
-                    {/* Expanded Tactical View */}
                     {isActive && (
                       <div className="pt-4 border-t border-white/10 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
                         <div className="flex items-center justify-between">
@@ -294,26 +299,16 @@ export default function ForecastPage() {
                   </CardContent>
                 </Card>
               )
-            })}
+            }) : (
+              <div className="w-full flex flex-col items-center justify-center p-12 glass border border-dashed border-white/10 rounded-2xl opacity-40">
+                <Zap className="h-8 w-8 mb-2 animate-pulse" />
+                <p className="text-xs font-black uppercase tracking-widest">Run AI Forecast to generate timeline vector</p>
+              </div>
+            )}
           </div>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
       </div>
-
-      {/* Strategic Insights */}
-      <Card className="glass-card border-t-2 border-t-accent shadow-2xl">
-        <CardHeader className="pb-2 border-b border-white/5 bg-white/5">
-          <CardTitle className="text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-2">
-            <Info className="h-4 w-4" />
-            Strategic Forecast Projection
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="p-6 bg-accent/5 rounded-xl border border-accent/10 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground font-medium italic">
-            {forecast.summary}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Protocol Modal */}
       <Dialog open={isProtocolOpen} onOpenChange={setIsProtocolOpen}>
@@ -327,10 +322,10 @@ export default function ForecastPage() {
           <div className="py-6 space-y-4">
             <div className="p-4 bg-accent/10 border border-accent/20 rounded-xl">
               <span className="text-[10px] font-black uppercase text-accent tracking-widest mb-1 block">Primary Objective</span>
-              <p className="text-sm font-bold text-white italic">"{forecast.immediateAction}"</p>
+              <p className="text-sm font-bold text-white italic">"{forecast.immediateAction || "Standard Observation"}"</p>
             </div>
             <div className="space-y-3">
-              {generateProtocols(forecast.immediateAction).map((step, idx) => (
+              {generateProtocols(forecast.immediateAction || "Monitor Sector Status").map((step, idx) => (
                 <div key={idx} className="flex gap-4 items-center p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
                   <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center text-[10px] font-black text-accent shrink-0 border border-accent/30">
                     {idx + 1}
