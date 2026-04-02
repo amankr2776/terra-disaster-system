@@ -285,8 +285,8 @@ export default function AuthorityInputPage() {
               <Label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Affected Population</Label>
               <Input 
                 type="number"
-                value={disaster.affectedPopulation} 
-                onChange={(e) => setDisaster({ ...disaster, affectedPopulation: parseInt(e.target.value) })}
+                value={disaster.affectedPopulation || 0} 
+                onChange={(e) => setDisaster({ ...disaster, affectedPopulation: parseInt(e.target.value) || 0 })}
                 className="bg-white/5 border-white/10 font-mono font-bold"
               />
             </div>
@@ -321,8 +321,8 @@ export default function AuthorityInputPage() {
               <Label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Minutes to Threshold</Label>
               <Input 
                 type="number"
-                value={disaster.minutesToInundation} 
-                onChange={(e) => setDisaster({ ...disaster, minutesToInundation: parseInt(e.target.value) })}
+                value={disaster.minutesToInundation || 0} 
+                onChange={(e) => setDisaster({ ...disaster, minutesToInundation: parseInt(e.target.value) || 0 })}
                 className="bg-white/5 border-white/10 font-mono"
               />
             </div>
@@ -343,8 +343,8 @@ export default function AuthorityInputPage() {
                 <Label className="text-[9px] font-black uppercase opacity-60">Rainfall (mm/h)</Label>
                 <Input 
                   type="number" 
-                  value={weather.rainfall} 
-                  onChange={(e) => setWeather({ ...weather, rainfall: parseInt(e.target.value) })}
+                  value={weather.rainfall || 0} 
+                  onChange={(e) => setWeather({ ...weather, rainfall: parseInt(e.target.value) || 0 })}
                   className="bg-white/5 border-white/10 font-mono font-bold"
                 />
               </div>
@@ -352,8 +352,8 @@ export default function AuthorityInputPage() {
                 <Label className="text-[9px] font-black uppercase opacity-60">Wind (km/h)</Label>
                 <Input 
                   type="number" 
-                  value={weather.windSpeed} 
-                  onChange={(e) => setWeather({ ...weather, windSpeed: parseInt(e.target.value) })}
+                  value={weather.windSpeed || 0} 
+                  onChange={(e) => setWeather({ ...weather, windSpeed: parseInt(e.target.value) || 0 })}
                   className="bg-white/5 border-white/10 font-mono font-bold"
                 />
               </div>
@@ -361,8 +361,8 @@ export default function AuthorityInputPage() {
                 <Label className="text-[9px] font-black uppercase opacity-60">Temp (°C)</Label>
                 <Input 
                   type="number" 
-                  value={weather.temperature} 
-                  onChange={(e) => setWeather({ ...weather, temperature: parseInt(e.target.value) })}
+                  value={weather.temperature || 0} 
+                  onChange={(e) => setWeather({ ...weather, temperature: parseInt(e.target.value) || 0 })}
                   className="bg-white/5 border-white/10 font-mono font-bold"
                 />
               </div>
@@ -449,10 +449,10 @@ export default function AuthorityInputPage() {
                     <Label className="text-[8px] font-black uppercase opacity-40">Cap %</Label>
                     <Input 
                       type="number"
-                      value={camp.capacityPercent} 
+                      value={camp.capacityPercent || 0} 
                       onChange={(e) => {
                         const newCamps = [...camps]
-                        newCamps[i].capacityPercent = parseInt(e.target.value)
+                        newCamps[i].capacityPercent = parseInt(e.target.value) || 0
                         setCamps(newCamps)
                       }}
                       className="bg-white/5 border-white/10 h-8 text-[11px] font-mono"
