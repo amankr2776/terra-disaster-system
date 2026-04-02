@@ -60,7 +60,6 @@ export function SidebarNav() {
     let lastAiAnalysis = 0
     let activeDisasterExists = false
 
-    // Function defined at top of scope to ensure proper hoisting within useEffect
     function calculateHealth() {
       let firebaseScore = isConnected ? 34 : 0
       
@@ -88,7 +87,7 @@ export function SidebarNav() {
 
     const unsubAnalysis = onValue(analysisRef, (snap) => {
       const data = snap.val()
-      lastAiAnalysis = data?.lastUpdated || 0
+      lastAiAnalysis = data?.lastUpdated ? new Date(data.lastUpdated).getTime() : 0
       calculateHealth()
     })
 
